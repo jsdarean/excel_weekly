@@ -49,6 +49,12 @@ describe('importData', () => {
     expect(w[0].progress).toBe('修正后的进展');
   });
 
+  it('同周同数据覆盖导入：updated=1（数据未变也算更新）', async () => {
+    await importData(getPool(), parsed, '2026-08-21');
+    const stats = await importData(getPool(), parsed, '2026-08-21');
+    expect(stats).toEqual({ inserted: 0, updated: 1, progressWritten: 1 });
+  });
+
   it('不同周各自成记录，互不影响', async () => {
     await importData(getPool(), parsed, '2026-08-21');
     await importData(getPool(), parsed, '2026-08-28');

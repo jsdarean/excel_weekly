@@ -13,7 +13,13 @@ export async function importData(pool, parsed, reportDate) {
     let inserted = 0;
     let updated = 0;
     for (const p of parsed.projects) {
-      const [r] = await conn.query(
+      // affectedRows 无法区分"更新但值未变"（FOUND_ROWS 下为 1），
+      // 因此先查存在性再 upsert，保证 inserted/updated 统计准确。
+      const [exist] = await conn.query(
+        'SELECT id FROM projects WHERE project_code = ?',
+        [p.projectCode]
+      );
+      await conn.query(
         `INSERT INTO projects
            (project_code, category_major, project_name, approval_date,
             category, owner, budget_wan, stage, content)
@@ -30,8 +36,8 @@ export async function importData(pool, parsed, reportDate) {
         [p.projectCode, p.categoryMajor, p.projectName, p.approvalDate,
          p.category, p.owner, p.budgetWan, p.stage, p.content]
       );
-      if (r.affectedRows === 1) inserted++;
-      else if (r.affectedRows === 2) updated++;
+      if (exist.length > 0) updated++;
+      else inserted++;
     }
     let progressWritten = 0;
     for (const w of parsed.progress) {
