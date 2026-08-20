@@ -9,6 +9,10 @@ function buildBuffer(rows) {
     '周进展(20260814)', '周进展（20260821）', '主设备请购完成率',
     '是否交底', '主设备到货完成率', '是否上线交维', '是否竣工验收',
   ];
+  return buildBufferWithHeader(header, rows);
+}
+
+function buildBufferWithHeader(header, rows = []) {
   const ws = xlsx.utils.aoa_to_sheet([header, ...rows]);
   const wb = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(wb, ws, '测试');
@@ -64,5 +68,27 @@ describe('parseWeeklyReport', () => {
     expect(r.skipped).toBe(1);
     expect(r.projects.map((p) => p.projectCode)).toEqual(['P002']);
     expect(r.progress[0].progress).toBeNull();
+  });
+
+  it('C 列表头不含"项目编码"时抛出指明缺失列的错误', () => {
+    const header = [
+      '序号', '专业类别', '其他', '项目名称', '立项批复日期', '分类',
+      '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
+      '周进展(20260814)', '周进展（20260821）', '主设备请购完成率',
+      '是否交底', '主设备到货完成率', '是否上线交维', '是否竣工验收',
+    ];
+    const buf = buildBufferWithHeader(header);
+    expect(() => parseWeeklyReport(buf)).toThrow(/项目编码/);
+  });
+
+  it('L 列表头不含"周进展"时抛出指明缺失列的错误', () => {
+    const header = [
+      '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '分类',
+      '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
+      '周进展(20260814)', '备注', '主设备请购完成率',
+      '是否交底', '主设备到货完成率', '是否上线交维', '是否竣工验收',
+    ];
+    const buf = buildBufferWithHeader(header);
+    expect(() => parseWeeklyReport(buf)).toThrow(/周进展/);
   });
 });

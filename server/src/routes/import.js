@@ -17,8 +17,10 @@ router.post('/', upload.single('file'), async (req, res) => {
     let parsed;
     try {
       parsed = parseWeeklyReport(req.file.buffer);
-    } catch {
-      return res.status(400).json({ error: 'Excel 解析失败，请确认文件格式' });
+    } catch (e) {
+      return res
+        .status(400)
+        .json({ error: `Excel 解析失败：${e.message}` });
     }
     const reportDate = req.body.report_date || parsed.headerDate;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate || '')) {

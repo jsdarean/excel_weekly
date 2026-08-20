@@ -26,6 +26,24 @@ function buildBuffer() {
 describe('POST /api/import', () => {
   beforeEach(resetDb);
 
+  it('上传结构不符的 Excel 返回 400 且提示具体缺失列', async () => {
+    const header = [
+      '序号', '专业类别', '其他', '项目名称', '立项批复日期', '分类',
+      '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
+      '周进展(20260814)', '周进展（20260821）', '主设备请购完成率',
+      '是否交底', '主设备到货完成率', '是否上线交维', '是否竣工验收',
+    ];
+    const ws = xlsx.utils.aoa_to_sheet([header]);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, '测试');
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const res = await request(createApp())
+      .post('/api/import')
+      .attach('file', buf, 'wrong.xlsx');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('项目编码');
+  });
+
   it('不传 report_date 时用表头解析的日期导入', async () => {
     const res = await request(createApp())
       .post('/api/import')

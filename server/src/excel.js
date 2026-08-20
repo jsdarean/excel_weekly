@@ -12,6 +12,27 @@ export function parseHeaderDate(header) {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
+// 关键列按固定索引取值，解析前必须校验表头，防止误传其他 Excel
+// （如《周报基础数据.xlsx》）被当作"导入成功 0 条"处理
+function validateHeader(header) {
+  const checks = [
+    { col: 'C', index: COL.projectCode, expect: '项目编码' },
+    { col: 'L', index: COL.progress, expect: '周进展' },
+  ];
+  const missing = checks.filter(
+    ({ index, expect }) => !String(header[index] ?? '').includes(expect)
+  );
+  if (missing.length > 0) {
+    const detail = missing
+      .map(
+        ({ col, index, expect }) =>
+          `${col} 列应为"${expect}"（实际为"${header[index] ?? '空'}"）`
+      )
+      .join('，');
+    throw new Error(`Excel 缺少关键列：${detail}`);
+  }
+}
+
 function toText(v) {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -45,6 +66,7 @@ export function parseWeeklyReport(buffer) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, defval: null });
   const header = rows[0] || [];
+  validateHeader(header);
   const headerDate = parseHeaderDate(header[COL.progress]);
 
   const projects = [];
