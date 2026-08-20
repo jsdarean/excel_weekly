@@ -28,6 +28,11 @@ describe('/api/persons', () => {
     const list2 = await request(app).get('/api/persons');
     expect(list2.body.persons[0].phone).toBe('13900000000');
 
+    const noop = await request(app)
+      .put(`/api/persons/${id}`)
+      .send({ name: '张三', phone: '13900000000', shortNumber: '61001', email: 'zs@example.com' });
+    expect(noop.status).toBe(200);
+
     const del = await request(app).delete(`/api/persons/${id}`);
     expect(del.status).toBe(204);
     const list3 = await request(app).get('/api/persons');

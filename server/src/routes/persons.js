@@ -41,11 +41,15 @@ router.put('/:id', async (req, res) => {
     const err = validate(req.body);
     if (err) return res.status(400).json({ error: err });
     const { name, phone = null, shortNumber = null, email = null } = req.body;
-    const [r] = await getPool().query(
+    const [existing] = await getPool().query(
+      'SELECT id FROM persons WHERE id = ?',
+      [req.params.id]
+    );
+    if (existing.length === 0) return res.status(404).json({ error: '人员不存在' });
+    await getPool().query(
       'UPDATE persons SET name = ?, phone = ?, short_number = ?, email = ? WHERE id = ?',
       [String(name).trim(), phone, shortNumber, email, req.params.id]
     );
-    if (r.affectedRows === 0) return res.status(404).json({ error: '人员不存在' });
     res.json({ id: Number(req.params.id) });
   } catch (e) {
     res.status(500).json({ error: e.message });
