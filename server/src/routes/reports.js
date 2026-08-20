@@ -49,28 +49,36 @@ router.get('/reports', async (req, res) => {
 });
 
 router.get('/report-dates', async (req, res) => {
-  const [rows] = await getPool().query(
-    'SELECT DISTINCT report_date FROM weekly_progress ORDER BY report_date DESC'
-  );
-  res.json({ dates: rows.map((r) => r.report_date) });
+  try {
+    const [rows] = await getPool().query(
+      'SELECT DISTINCT report_date FROM weekly_progress ORDER BY report_date DESC'
+    );
+    res.json({ dates: rows.map((r) => r.report_date) });
+  } catch (e) {
+    res.status(500).json({ error: `查询失败：${e.message}` });
+  }
 });
 
 router.get('/filters', async (req, res) => {
-  const pool = getPool();
-  const [cats] = await pool.query(
-    "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category <> '' ORDER BY category"
-  );
-  const [owners] = await pool.query(
-    "SELECT DISTINCT owner FROM projects WHERE owner IS NOT NULL AND owner <> '' ORDER BY owner"
-  );
-  const [stages] = await pool.query(
-    "SELECT DISTINCT stage FROM projects WHERE stage IS NOT NULL AND stage <> '' ORDER BY stage"
-  );
-  res.json({
-    categories: cats.map((r) => r.category),
-    owners: owners.map((r) => r.owner),
-    stages: stages.map((r) => r.stage),
-  });
+  try {
+    const pool = getPool();
+    const [cats] = await pool.query(
+      "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category <> '' ORDER BY category"
+    );
+    const [owners] = await pool.query(
+      "SELECT DISTINCT owner FROM projects WHERE owner IS NOT NULL AND owner <> '' ORDER BY owner"
+    );
+    const [stages] = await pool.query(
+      "SELECT DISTINCT stage FROM projects WHERE stage IS NOT NULL AND stage <> '' ORDER BY stage"
+    );
+    res.json({
+      categories: cats.map((r) => r.category),
+      owners: owners.map((r) => r.owner),
+      stages: stages.map((r) => r.stage),
+    });
+  } catch (e) {
+    res.status(500).json({ error: `查询失败：${e.message}` });
+  }
 });
 
 export default router;
