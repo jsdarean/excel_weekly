@@ -6,5 +6,5 @@ export default defineConfig({
   server: {
     proxy: { '/api': 'http://localhost:3001' },
   },
-  test: { environment: 'node' },
+  test: { environment: 'node', clearMocks: true },
 });
