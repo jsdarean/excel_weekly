@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import importRouter from './routes/import.js';
+import reportsRouter from './routes/reports.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,6 +11,7 @@ export function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/import', importRouter);
+  app.use('/api', reportsRouter);
 
   // 生产模式：托管前端构建产物，非 /api 的 GET 回退到 index.html
   const dist = path.join(__dirname, '../../web/dist');
