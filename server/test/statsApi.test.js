@@ -7,13 +7,13 @@ import { resetDb } from './helpers/db.js';
 async function seed() {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO projects (project_code, project_name, category, owner, stage, approval_date)
-     VALUES ('P001', 'a', '收入相关', '张三', '项目实施阶段', '2025-09-09'),
-            ('P002', 'b', '基础能力', '张三', '勘察设计阶段', '2025-09-20'),
-            ('P003', 'c', '基础能力', '李四', '项目实施阶段', '2025-08-04'),
-            ('P004', 'd', '支撑后端', '李四', '项目实施阶段', '2026-01-15'),
-            ('P005', 'e', '拟取消', '王五', '终验归档阶段', NULL),
-            ('P006', 'f', NULL, NULL, NULL, NULL)`
+    `INSERT INTO projects (project_code, project_name, category, owner, stage, approval_date, budget_wan)
+     VALUES ('P001', 'a', '收入相关', '张三', '项目实施阶段', '2025-09-09', 100),
+            ('P002', 'b', '基础能力', '张三', '勘察设计阶段', '2025-09-20', 200),
+            ('P003', 'c', '基础能力', '李四', '项目实施阶段', '2025-08-04', 300),
+            ('P004', 'd', '支撑后端', '李四', '项目实施阶段', '2026-01-15', NULL),
+            ('P005', 'e', '拟取消', '王五', '终验归档阶段', NULL, 50),
+            ('P006', 'f', NULL, NULL, NULL, NULL, NULL)`
   );
 }
 
@@ -30,11 +30,11 @@ describe('GET /api/stats', () => {
 
     // 分类按自定义顺序：收入相关/基础能力/支撑后端/拟取消，空分类排最后
     expect(res.body.byCategory).toEqual([
-      { category: '收入相关', count: 1 },
-      { category: '基础能力', count: 2 },
-      { category: '支撑后端', count: 1 },
-      { category: '拟取消', count: 1 },
-      { category: '未分类', count: 1 },
+      { category: '收入相关', count: 1, budget: '100.00' },
+      { category: '基础能力', count: 2, budget: '500.00' },
+      { category: '支撑后端', count: 1, budget: '0.00' },
+      { category: '拟取消', count: 1, budget: '50.00' },
+      { category: '未分类', count: 1, budget: '0.00' },
     ]);
 
     // 阶段按数量降序

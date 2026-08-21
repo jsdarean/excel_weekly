@@ -16,10 +16,10 @@ router.get('/stats', async (req, res) => {
     }
 
     const [catRows] = await pool.query(
-      "SELECT COALESCE(NULLIF(category, ''), '未分类') AS cat, COUNT(*) AS n FROM projects GROUP BY cat"
+      "SELECT COALESCE(NULLIF(category, ''), '未分类') AS cat, COUNT(*) AS n, COALESCE(SUM(budget_wan), 0) AS budget FROM projects GROUP BY cat"
     );
     const byCategory = catRows
-      .map((r) => ({ category: r.cat, count: r.n }))
+      .map((r) => ({ category: r.cat, count: r.n, budget: String(r.budget) }))
       .sort((a, b) => {
         const ia = CATEGORY_ORDER.indexOf(a.category);
         const ib = CATEGORY_ORDER.indexOf(b.category);

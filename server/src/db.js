@@ -63,4 +63,18 @@ export async function initDatabase() {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  await p.query(`CREATE TABLE IF NOT EXISTS watched_projects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_code VARCHAR(64) NOT NULL UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await p.query(`CREATE TABLE IF NOT EXISTS watch_progress (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_code VARCHAR(64) NOT NULL,
+    report_date DATE NOT NULL,
+    detail TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_watch_week (project_code, report_date)
+  )`);
 }

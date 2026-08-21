@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import ReportList from './views/ReportList.vue';
+import WatchedView from './views/WatchedView.vue';
 import StatsView from './views/StatsView.vue';
 import ProjectDetail from './views/ProjectDetail.vue';
 import ImportView from './views/ImportView.vue';
@@ -9,6 +10,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: ReportList },
+    { path: '/watched', component: WatchedView },
     { path: '/stats', component: StatsView },
     { path: '/projects/:code', component: ProjectDetail },
     { path: '/import', component: ImportView },

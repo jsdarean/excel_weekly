@@ -52,4 +52,28 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+  searchProjects: (keyword) => request(`/api/reports${buildQuery({ keyword })}`),
+  getWatched: () => request('/api/watched'),
+  addWatched: (code) =>
+    request('/api/watched', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    }),
+  removeWatched: (code) =>
+    request(`/api/watched/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+  addWatchProgress: (code, body) =>
+    request(`/api/watched/${encodeURIComponent(code)}/progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  updateWatchProgress: (id, body) =>
+    request(`/api/watched/progress/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteWatchProgress: (id) =>
+    request(`/api/watched/progress/${id}`, { method: 'DELETE' }),
 };
