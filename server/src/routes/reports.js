@@ -28,6 +28,11 @@ router.get('/reports', async (req, res) => {
       conds.push('p.stage = ?');
       params.push(req.query.stage);
     }
+    if (req.query.keyword) {
+      conds.push('(p.project_code LIKE ? OR p.project_name LIKE ?)');
+      const kw = `%${req.query.keyword}%`;
+      params.push(kw, kw);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const [rows] = await pool.query(
       `SELECT p.id, p.project_code, p.category_major, p.project_name,
@@ -39,7 +44,10 @@ router.get('/reports', async (req, res) => {
        LEFT JOIN weekly_progress w
          ON w.project_code = p.project_code AND w.report_date = ?
        ${where}
-       ORDER BY p.project_code`,
+       ORDER BY FIELD(p.category, '收入相关', '基础能力', '支撑后端', '拟取消') = 0,
+                FIELD(p.category, '收入相关', '基础能力', '支撑后端', '拟取消'),
+                p.approval_date IS NULL, p.approval_date DESC,
+                p.project_code`,
       params
     );
     res.json({ reportDate, rows });

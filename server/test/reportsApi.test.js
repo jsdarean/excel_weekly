@@ -35,6 +35,32 @@ describe('GET /api/reports', () => {
     expect(p1.owner).toBe('张三');
   });
 
+  it('keyword 模糊搜索项目编码或项目名称', async () => {
+    // 按编码模糊匹配
+    const byCode = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: 'P001' });
+    expect(byCode.body.rows).toHaveLength(1);
+    expect(byCode.body.rows[0].project_code).toBe('P001');
+    // 按名称模糊匹配
+    const byName = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: '项目乙' });
+    expect(byName.body.rows).toHaveLength(1);
+    expect(byName.body.rows[0].project_code).toBe('P002');
+    // 无匹配返回空
+    const none = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: '不存在' });
+    expect(none.body.rows).toHaveLength(0);
+    // keyword 与 category 可组合
+    const combo = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: '项目', category: '支撑后端' });
+    expect(combo.body.rows).toHaveLength(1);
+    expect(combo.body.rows[0].project_code).toBe('P002');
+  });
+
   it('可指定 report_date 查历史周', async () => {
     const res = await request(createApp())
       .get('/api/reports')
@@ -54,6 +80,23 @@ describe('GET /api/reports', () => {
       .get('/api/reports')
       .query({ category: '基础能力', owner: '李四' });
     expect(none.body.rows).toHaveLength(0);
+  });
+
+  it('排序：分类固定顺序为主（收入相关/基础能力/支撑后端/拟取消），同分类内按立项批复日期降序，无日期排在该分类最后', async () => {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO projects (project_code, project_name, approval_date, category)
+       VALUES ('S1', 'a', '2025-06-01', '支撑后端'),
+              ('S2', 'b', '2025-01-01', '收入相关'),
+              ('S3', 'c', '2025-09-01', '拟取消'),
+              ('S4', 'd', '2025-03-01', '基础能力'),
+              ('S5', 'e', '2025-08-01', '收入相关')`
+    );
+    const res = await request(createApp()).get('/api/reports');
+    // seed 的 P001（基础能力）/P002（支撑后端）无批复日期，排在各自分类的最后
+    expect(res.body.rows.map((r) => r.project_code)).toEqual([
+      'S5', 'S2', 'S4', 'P001', 'S1', 'P002', 'S3',
+    ]);
   });
 });
 
