@@ -1,37 +1,41 @@
 <template>
   <div>
     <h2>人员配置</h2>
-    <button @click="openForm(null)">新增人员</button>
+    <p>
+      <button class="primary" @click="openForm(null)">新增人员</button>
+    </p>
     <p v-if="error" class="error">{{ error }}</p>
 
-    <table>
-      <thead>
-        <tr><th>姓名</th><th>电话</th><th>短号</th><th>邮箱</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in persons" :key="p.id">
-          <td>{{ p.name }}</td>
-          <td>{{ p.phone }}</td>
-          <td>{{ p.short_number }}</td>
-          <td>{{ p.email }}</td>
-          <td>
-            <button @click="openForm(p)">编辑</button>
-            <button @click="remove(p)">删除</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="card table-card">
+      <table>
+        <thead>
+          <tr><th>姓名</th><th>电话</th><th>短号</th><th>邮箱</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="p in persons" :key="p.id">
+            <td>{{ p.name }}</td>
+            <td class="num">{{ p.phone }}</td>
+            <td class="num">{{ p.short_number }}</td>
+            <td>{{ p.email }}</td>
+            <td class="ops">
+              <button @click="openForm(p)">编辑</button>
+              <button @click="remove(p)">删除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div v-if="editing" class="modal">
       <div class="dialog">
         <h3>{{ editing.id ? '编辑人员' : '新增人员' }}</h3>
-        <label>姓名 <input v-model="editing.name" /></label>
-        <label>电话 <input v-model="editing.phone" /></label>
-        <label>短号 <input v-model="editing.shortNumber" /></label>
-        <label>邮箱 <input v-model="editing.email" /></label>
+        <label>姓名 <input type="text" v-model="editing.name" /></label>
+        <label>电话 <input type="text" v-model="editing.phone" /></label>
+        <label>短号 <input type="text" v-model="editing.shortNumber" /></label>
+        <label>邮箱 <input type="email" v-model="editing.email" /></label>
         <p v-if="formError" class="error">{{ formError }}</p>
-        <div>
-          <button @click="save">保存</button>
+        <div class="dialog-actions">
+          <button class="primary" @click="save">保存</button>
           <button @click="editing = null">取消</button>
         </div>
       </div>
@@ -90,8 +94,36 @@ onMounted(load);
 </script>
 
 <style scoped>
-.error { color: #c00; }
-.modal { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; }
-.dialog { background: #fff; padding: 20px; display: flex; flex-direction: column; gap: 10px; min-width: 320px; }
-.dialog label { display: flex; justify-content: space-between; gap: 8px; }
+.table-card { padding: 8px 0; }
+.table-card table { text-align: center; }
+.table-card th, .table-card td { text-align: center; }
+.ops { display: flex; gap: 8px; justify-content: center; }
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 37, 61, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog {
+  background: var(--canvas);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 360px;
+}
+.dialog label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.dialog label input { flex: 1; }
+.dialog-actions { display: flex; gap: 12px; margin-top: 8px; }
 </style>

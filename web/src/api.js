@@ -23,6 +23,7 @@ export const api = {
   getReports: (params) => request(`/api/reports${buildQuery(params)}`),
   getReportDates: () => request('/api/report-dates'),
   getFilters: () => request('/api/filters'),
+  getStats: () => request('/api/stats'),
   importReport(file, reportDate, overwrite) {
     const fd = new FormData();
     fd.append('file', file);
@@ -44,4 +45,11 @@ export const api = {
       body: JSON.stringify(p),
     }),
   deletePerson: (id) => request(`/api/persons/${id}`, { method: 'DELETE' }),
+  getProject: (code) => request(`/api/projects/${encodeURIComponent(code)}`),
+  updateProject: (code, body) =>
+    request(`/api/projects/${encodeURIComponent(code)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
 };

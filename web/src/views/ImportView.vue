@@ -1,26 +1,30 @@
 <template>
   <div>
     <h2>数据导入</h2>
-    <div class="form">
-      <label>Excel 文件
-        <input type="file" accept=".xlsx,.xls" @change="onFile" />
-      </label>
-      <label>周报时间
-        <input type="date" v-model="reportDate" />
-      </label>
-      <button :disabled="!file || !reportDate || loading" @click="submit">
-        {{ loading ? '导入中…' : '导入' }}
-      </button>
+
+    <div class="card form-card">
+      <div class="form">
+        <label>Excel 文件
+          <input type="file" accept=".xlsx,.xls" @change="onFile" />
+        </label>
+        <label>周报时间
+          <input type="date" v-model="reportDate" />
+        </label>
+        <button class="primary" :disabled="!file || !reportDate || loading" @click="submit">
+          {{ loading ? '导入中…' : '导入' }}
+        </button>
+      </div>
+      <p v-if="error" class="error">{{ error }}</p>
     </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
-    <div v-if="result" class="result">
-      <p>导入完成（周报时间：{{ result.reportDate }}）：</p>
-      <ul>
-        <li>新增项目：{{ result.inserted }}</li>
-        <li>更新项目：{{ result.updated }}</li>
-        <li>写入进展：{{ result.progressWritten }}</li>
-        <li>跳过行（无项目编码）：{{ result.skipped }}</li>
+    <div v-if="result" class="card result">
+      <h3>导入完成</h3>
+      <p class="result-date">周报时间：{{ result.reportDate }}</p>
+      <ul class="stats">
+        <li><span class="num stat-num">{{ result.inserted }}</span> 新增项目</li>
+        <li><span class="num stat-num">{{ result.updated }}</span> 更新项目</li>
+        <li><span class="num stat-num">{{ result.progressWritten }}</span> 写入进展</li>
+        <li><span class="num stat-num">{{ result.skipped }}</span> 跳过行（无项目编码）</li>
       </ul>
     </div>
   </div>
@@ -74,7 +78,24 @@ async function submit() {
 </script>
 
 <style scoped>
-.form { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
-.error { color: #c00; }
-.result { border: 1px solid #9c9; padding: 8px 12px; display: inline-block; }
+.form-card { margin-bottom: 16px; }
+.form { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.form label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.result { max-width: 480px; }
+.result-date { color: var(--ink-mute); font-size: 13px; margin: 0 0 12px; }
+.stats { list-style: none; margin: 0; padding: 0; display: flex; gap: 24px; }
+.stats li { font-size: 13px; color: var(--ink-mute); }
+.stat-num {
+  display: block;
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: -0.26px;
+  color: var(--ink);
+}
 </style>

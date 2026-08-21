@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "vue": "^3.4.38",
     "vue-router": "^4.4.3",
     "xlsx": "^0.18.5"
