@@ -76,4 +76,26 @@ export const api = {
     }),
   deleteWatchProgress: (id) =>
     request(`/api/watched/progress/${id}`, { method: 'DELETE' }),
+  getReportTemplates: () => request('/api/report-templates'),
+  createReportTemplate: (name, content) =>
+    request('/api/report-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    }),
+  updateReportTemplate: (id, name, content) =>
+    request(`/api/report-templates/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, content }),
+    }),
+  deleteReportTemplate: (id) =>
+    request(`/api/report-templates/${id}`, { method: 'DELETE' }),
+  getReportPreview: (templateId) =>
+    request(`/api/report-preview${templateId ? `?template_id=${templateId}` : ''}`),
+  importPms(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request('/api/import-pms', { method: 'POST', body: fd });
+  },
 };

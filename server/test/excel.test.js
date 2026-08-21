@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import xlsx from 'xlsx';
+import iconv from 'iconv-lite';
 import { parseHeaderDate, parseWeeklyReport } from '../src/excel.js';
 
 function buildBuffer(rows) {
@@ -90,5 +91,23 @@ describe('parseWeeklyReport', () => {
     ];
     const buf = buildBufferWithHeader(header);
     expect(() => parseWeeklyReport(buf)).toThrow(/周进展/);
+  });
+
+  it('支持 CSV：UTF-8（含/不含 BOM）与 GBK 编码均可解析', () => {
+    const csvText =
+      '序号,专业类别,项目编码,项目名称,立项批复日期,分类,工程责任人,立项金额（万元）,项目阶段,建设内容,周进展(20260814),周进展（20260821）,主设备请购完成率,是否交底,主设备到货完成率,是否上线交维,是否竣工验收\n' +
+      '1,业务网,P001,项目甲,2025-09-09,基础能力,张三,320,项目实施阶段,建设内容甲,上周,本周进展甲,0.85,是,0.8,否,否\n';
+    for (const [label, buf] of [
+      ['UTF-8 无 BOM', Buffer.from(csvText, 'utf-8')],
+      ['UTF-8 有 BOM', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(csvText, 'utf-8')])],
+      ['GBK', iconv.encode(csvText, 'gbk')],
+    ]) {
+      const r = parseWeeklyReport(buf);
+      expect(r.projects[0].projectCode, label).toBe('P001');
+      expect(r.projects[0].projectName, label).toBe('项目甲');
+      expect(r.projects[0].category, label).toBe('基础能力');
+      expect(r.progress[0].progress, label).toBe('本周进展甲');
+      expect(r.headerDate, label).toBe('2026-08-21');
+    }
   });
 });

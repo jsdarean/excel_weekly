@@ -1,4 +1,5 @@
 import xlsx from 'xlsx';
+import iconv from 'iconv-lite';
 
 const COL = {
   categoryMajor: 1, projectCode: 2, projectName: 3, approvalDate: 4,
@@ -61,8 +62,24 @@ function toDateString(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
+// 判断是否为 CSV（xlsx 是 zip 格式，以 PK\x03\x04 开头）
+function isCsv(buffer) {
+  return !(buffer[0] === 0x50 && buffer[1] === 0x4b);
+}
+
+// CSV 解码：先试 UTF-8（严格模式），失败则按 GBK 解码（Excel 另存的中文 CSV 通常是 GBK）
+function decodeCsv(buffer) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    return iconv.decode(buffer, 'gbk');
+  }
+}
+
 export function parseWeeklyReport(buffer) {
-  const wb = xlsx.read(buffer, { type: 'buffer', cellDates: true });
+  const wb = isCsv(buffer)
+    ? xlsx.read(decodeCsv(buffer).replace(/^\uFEFF/, ''), { type: 'string' })
+    : xlsx.read(buffer, { type: 'buffer', cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, defval: null });
   const header = rows[0] || [];

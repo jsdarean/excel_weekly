@@ -2,10 +2,12 @@
   <div>
     <h2>数据导入</h2>
 
+    <!-- 一、云文档周报数据导入 -->
     <div class="card form-card">
+      <h3>云文档周报数据导入</h3>
       <div class="form">
-        <label>Excel 文件
-          <input type="file" accept=".xlsx,.xls" @change="onFile" />
+        <label>Excel / CSV 文件
+          <input type="file" accept=".xlsx,.xls,.csv" @change="onFile" />
         </label>
         <label>周报时间
           <input type="date" v-model="reportDate" />
@@ -15,17 +17,56 @@
         </button>
       </div>
       <p v-if="error" class="error">{{ error }}</p>
+      <div v-if="result" class="result">
+        <p class="result-date">导入完成（周报时间：{{ result.reportDate }}）</p>
+        <ul class="stats">
+          <li><span class="num stat-num">{{ result.inserted }}</span> 新增项目</li>
+          <li><span class="num stat-num">{{ result.updated }}</span> 更新项目</li>
+          <li><span class="num stat-num">{{ result.progressWritten }}</span> 写入进展</li>
+          <li><span class="num stat-num">{{ result.skipped }}</span> 跳过行</li>
+        </ul>
+      </div>
     </div>
 
-    <div v-if="result" class="card result">
-      <h3>导入完成</h3>
-      <p class="result-date">周报时间：{{ result.reportDate }}</p>
-      <ul class="stats">
-        <li><span class="num stat-num">{{ result.inserted }}</span> 新增项目</li>
-        <li><span class="num stat-num">{{ result.updated }}</span> 更新项目</li>
-        <li><span class="num stat-num">{{ result.progressWritten }}</span> 写入进展</li>
-        <li><span class="num stat-num">{{ result.skipped }}</span> 跳过行（无项目编码）</li>
-      </ul>
+    <!-- 二、PMS 宽表数据导入 -->
+    <div class="card form-card">
+      <h3>PMS 宽表数据导入</h3>
+      <p class="pms-hint">
+        只处理"工程管理经理-主"在人员配置中的项目：阶段不一致的更新阶段（工程实施阶段→项目实施阶段、审计归档阶段→终验归档阶段），库里没有的新增项目。
+      </p>
+      <div class="form">
+        <label>Excel 文件
+          <input type="file" accept=".xlsx,.xls" @change="onPmsFile" />
+        </label>
+        <button class="primary" :disabled="!pmsFile || pmsLoading" @click="submitPms">
+          {{ pmsLoading ? '导入中…' : '导入' }}
+        </button>
+      </div>
+      <p v-if="pmsError" class="error">{{ pmsError }}</p>
+      <div v-if="pmsResult" class="result">
+        <p class="result-date">PMS 宽表导入完成</p>
+        <ul class="stats">
+          <li><span class="num stat-num">{{ pmsResult.updated }}</span> 更新阶段</li>
+          <li><span class="num stat-num">{{ pmsResult.inserted }}</span> 新增项目</li>
+          <li><span class="num stat-num">{{ pmsResult.unchanged }}</span> 无变化</li>
+          <li><span class="num stat-num">{{ pmsResult.skippedNoPerson }}</span> 跳过（非配置人员）</li>
+          <li><span class="num stat-num">{{ pmsResult.skippedStage }}</span> 跳过（非标准阶段）</li>
+        </ul>
+        <template v-if="pmsResult.updatedList.length">
+          <p class="detail-title">更新阶段明细：</p>
+          <ul class="detail-list">
+            <li v-for="u in pmsResult.updatedList" :key="u.projectCode" class="num">
+              {{ u.projectCode }}：{{ u.from }} → {{ u.to }}
+            </li>
+          </ul>
+        </template>
+        <template v-if="pmsResult.insertedList.length">
+          <p class="detail-title">新增项目：</p>
+          <ul class="detail-list">
+            <li v-for="c in pmsResult.insertedList" :key="c" class="num">{{ c }}</li>
+          </ul>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -34,7 +75,9 @@
 import { ref } from 'vue';
 import * as xlsx from 'xlsx';
 import { importWithConfirm } from '../importFlow.js';
+import { api } from '../api.js';
 
+// ---- 云文档周报导入 ----
 const file = ref(null);
 const reportDate = ref('');
 const loading = ref(false);
@@ -75,10 +118,35 @@ async function submit() {
     loading.value = false;
   }
 }
+
+// ---- PMS 宽表导入 ----
+const pmsFile = ref(null);
+const pmsLoading = ref(false);
+const pmsError = ref('');
+const pmsResult = ref(null);
+
+function onPmsFile(e) {
+  pmsError.value = '';
+  pmsResult.value = null;
+  pmsFile.value = e.target.files[0] || null;
+}
+
+async function submitPms() {
+  pmsLoading.value = true;
+  pmsError.value = '';
+  pmsResult.value = null;
+  try {
+    pmsResult.value = await api.importPms(pmsFile.value);
+  } catch (e) {
+    pmsError.value = e.message;
+  } finally {
+    pmsLoading.value = false;
+  }
+}
 </script>
 
 <style scoped>
-.form-card { margin-bottom: 16px; }
+.form-card { margin-bottom: 24px; }
 .form { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .form label {
   display: flex;
@@ -87,9 +155,10 @@ async function submit() {
   font-size: 14px;
   color: var(--ink-secondary);
 }
-.result { max-width: 480px; }
+.pms-hint { font-size: 13px; color: var(--ink-mute); margin: 0 0 12px; }
+.result { margin-top: 16px; }
 .result-date { color: var(--ink-mute); font-size: 13px; margin: 0 0 12px; }
-.stats { list-style: none; margin: 0; padding: 0; display: flex; gap: 24px; }
+.stats { list-style: none; margin: 0; padding: 0; display: flex; gap: 24px; flex-wrap: wrap; }
 .stats li { font-size: 13px; color: var(--ink-mute); }
 .stat-num {
   display: block;
@@ -98,4 +167,6 @@ async function submit() {
   letter-spacing: -0.26px;
   color: var(--ink);
 }
+.detail-title { font-size: 13px; color: var(--ink-secondary); margin: 16px 0 4px; }
+.detail-list { margin: 0; padding-left: 20px; font-size: 13px; }
 </style>
