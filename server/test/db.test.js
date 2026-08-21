@@ -11,6 +11,7 @@ describe('initDatabase', () => {
     expect(rows.map((r) => r.TABLE_NAME ?? r.table_name)).toEqual([
       'persons',
       'projects',
+      'report_templates',
       'watch_progress',
       'watched_projects',
       'weekly_progress',

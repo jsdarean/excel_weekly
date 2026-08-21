@@ -6,6 +6,7 @@ export async function resetDb() {
   await pool.query('DELETE FROM weekly_progress');
   await pool.query('DELETE FROM watch_progress');
   await pool.query('DELETE FROM watched_projects');
+  await pool.query('DELETE FROM report_templates');
   await pool.query('DELETE FROM projects');
   await pool.query('DELETE FROM persons');
 }

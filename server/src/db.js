@@ -77,4 +77,11 @@ export async function initDatabase() {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_watch_week (project_code, report_date)
   )`);
+  await p.query(`CREATE TABLE IF NOT EXISTS report_templates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL DEFAULT '默认模板',
+    content MEDIUMTEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
 }
