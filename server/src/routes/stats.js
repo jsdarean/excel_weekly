@@ -11,8 +11,12 @@ router.get('/stats', async (req, res) => {
     const pool = getPool();
 
     const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM projects');
+    const [[{ budgetSum }]] = await pool.query(
+      'SELECT COALESCE(SUM(budget_wan), 0) AS budgetSum FROM projects'
+    );
+    const totalBudgetYi = (Number(budgetSum) / 10000).toFixed(2);
     if (total === 0) {
-      return res.json({ total: 0, byCategory: [], byStage: [], byOwnerCategory: [], byOwnerStage: [], byMonth: [] });
+      return res.json({ total: 0, totalBudgetYi, byCategory: [], byStage: [], byOwnerCategory: [], byOwnerStage: [], byMonth: [] });
     }
 
     const [catRows] = await pool.query(
@@ -71,15 +75,16 @@ router.get('/stats', async (req, res) => {
     }
     const byOwnerStage = [...smap.values()].sort((a, b) => a.owner.localeCompare(b.owner, 'zh'));
 
-    // 按立项批复年月聚合（时间升序），柱状图用
+    // 按立项批复年月聚合（时间升序），柱状图/折线图用；含每月立项金额合计（万元）
     const [monthRows] = await pool.query(
-      `SELECT DATE_FORMAT(approval_date, '%Y-%m') AS ym, COUNT(*) AS n
+      `SELECT DATE_FORMAT(approval_date, '%Y-%m') AS ym, COUNT(*) AS n,
+              COALESCE(SUM(budget_wan), 0) AS budget
        FROM projects WHERE approval_date IS NOT NULL
        GROUP BY ym ORDER BY ym`
     );
-    const byMonth = monthRows.map((r) => ({ month: r.ym, count: r.n }));
+    const byMonth = monthRows.map((r) => ({ month: r.ym, count: r.n, budget: String(r.budget) }));
 
-    res.json({ total, byCategory, byStage, byOwnerCategory, byOwnerStage, byMonth });
+    res.json({ total, totalBudgetYi, byCategory, byStage, byOwnerCategory, byOwnerStage, byMonth });
   } catch (e) {
     res.status(500).json({ error: `统计失败：${e.message}` });
   }

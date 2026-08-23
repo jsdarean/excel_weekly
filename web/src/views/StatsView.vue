@@ -4,29 +4,47 @@
     <p v-if="error" class="error">{{ error }}</p>
 
     <template v-if="stats">
-      <!-- 一、项目总数 + 立项月份柱状图 -->
+      <!-- 一、项目总数 + 立项总金额 + 立项月份柱状图/金额折线图 -->
       <div class="total-card">
         <div class="total-glow"></div>
         <div class="total-head">
           <div class="total-num num">{{ stats.total }}</div>
           <div class="total-label">项目总数</div>
+          <div class="total-num num budget-num">{{ stats.totalBudgetYi }}</div>
+          <div class="total-label">立项总金额（亿元）</div>
         </div>
         <div class="chart">
-          <div
-            v-for="m in stats.byMonth"
-            :key="m.month"
-            class="bar-col"
-          >
-            <div class="bar-wrap">
-              <span class="num bar-val">{{ m.count }}</span>
-              <div
-                class="bar"
-                :style="{ height: barHeight(m.count) + '%' }"
-                :title="`${m.month}：${m.count} 个`"
-              ></div>
+          <!-- 折线图（立项金额，万元）在柱状图上方，不重叠 -->
+          <svg class="line-chart" :viewBox="`0 0 ${chartW} ${lineH}`" preserveAspectRatio="none" :style="{ minWidth: chartMinWidth }">
+            <polyline :points="linePoints" fill="none" stroke="#f96bee" stroke-width="2" vector-effect="non-scaling-stroke" />
+            <g v-for="(p, i) in linePointArr" :key="i">
+              <text :x="p[0]" :y="p[1] - 8" class="line-val" text-anchor="middle">
+                {{ fmtWan(stats.byMonth[i].budget) }}
+              </text>
+              <circle :cx="p[0]" :cy="p[1]" r="3.5" fill="#f96bee" />
+            </g>
+          </svg>
+          <div class="bars-row" :style="{ minWidth: chartMinWidth }">
+            <div
+              v-for="m in stats.byMonth"
+              :key="m.month"
+              class="bar-col"
+            >
+              <div class="bar-wrap">
+                <span class="num bar-val">{{ m.count }}</span>
+                <div
+                  class="bar"
+                  :style="{ height: barHeight(m.count) + '%' }"
+                  :title="`${m.month}：${m.count} 个`"
+                ></div>
+              </div>
+              <div class="num bar-label">{{ m.month }}</div>
             </div>
-            <div class="num bar-label">{{ m.month }}</div>
           </div>
+        </div>
+        <div class="chart-legend">
+          <span><i class="legend-bar"></i>项目数（个）</span>
+          <span><i class="legend-line"></i>立项总金额（万元）</span>
         </div>
       </div>
 
@@ -157,6 +175,32 @@ function barHeight(n) {
   return Math.max((n / max) * 100, 3); // 至少 3% 保证可见
 }
 
+// 折线图：每月立项金额（万元），SVG 在柱状图上方独立区域，横坐标与柱子一一对应
+const chartW = 1000;
+const lineH = 110;
+// 柱子区域的最小宽度：每柱 44px + 间距 10px；折线 SVG 与柱子同宽，滚动时保持对齐
+const chartMinWidth = computed(() =>
+  stats.value ? `${stats.value.byMonth.length * 54}px` : '0'
+);
+const linePointArr = computed(() => {
+  if (!stats.value || !stats.value.byMonth.length) return [];
+  const months = stats.value.byMonth;
+  const maxBudget = Math.max(...months.map((m) => Number(m.budget)), 1);
+  const n = months.length;
+  return months.map((m, i) => {
+    const x = ((i + 0.5) / n) * chartW;
+    const y = lineH - 10 - (Number(m.budget) / maxBudget) * (lineH - 36);
+    return [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
+  });
+});
+const linePoints = computed(() => linePointArr.value.map((p) => p.join(',')).join(' '));
+
+// 万元取整展示（如 22723.10 → 22723）
+function fmtWan(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? String(Math.round(n)) : '';
+}
+
 onMounted(async () => {
   try {
     stats.value = await api.getStats();
@@ -204,14 +248,12 @@ onMounted(async () => {
   color: #0085d0;
 }
 
-/* 柱状图 */
+/* 柱状图 + 折线图（折线在上、不重叠；横向滚动时两者同宽对齐） */
 .chart {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  flex-direction: column;
   margin-top: 28px;
-  height: 160px;
   overflow-x: auto;
   padding-bottom: 4px;
 }
@@ -253,6 +295,46 @@ onMounted(async () => {
   white-space: nowrap;
   margin-top: 6px;
 }
+
+.budget-num { margin-left: 32px; }
+
+/* 折线图区域（柱状图上方，不重叠） */
+.chart { position: relative; }
+.line-chart {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin-bottom: 4px;
+}
+.line-val {
+  font-size: 11px;
+  fill: var(--magenta);
+  font-feature-settings: 'tnum';
+}
+.bars-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 160px;
+}
+.chart-legend {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+.chart-legend i {
+  display: inline-block;
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.legend-bar { background: linear-gradient(90deg, #33a3dc, #0085d0); }
+.legend-line { background: #f96bee; }
 
 .grid-2 {
   display: grid;

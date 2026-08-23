@@ -27,6 +27,8 @@ describe('GET /api/stats', () => {
     const res = await request(createApp()).get('/api/stats');
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(6);
+    // 立项总金额：100+200+300+0+50+0 = 650 万元 = 0.07 亿元
+    expect(res.body.totalBudgetYi).toBe('0.07');
 
     // 分类按自定义顺序：收入相关/基础能力/支撑后端/拟取消，空分类排最后
     expect(res.body.byCategory).toEqual([
@@ -61,11 +63,11 @@ describe('GET /api/stats', () => {
       { owner: '张三', '项目实施阶段': 1, '勘察设计阶段': 1, '终验归档阶段': 0, '未填写': 0, total: 2 },
     ]);
 
-    // 按立项批复年月聚合，时间升序，无日期的项目不计入
+    // 按立项批复年月聚合，时间升序，无日期的项目不计入；含每月立项金额合计（万元）
     expect(res.body.byMonth).toEqual([
-      { month: '2025-08', count: 1 },
-      { month: '2025-09', count: 2 },
-      { month: '2026-01', count: 1 },
+      { month: '2025-08', count: 1, budget: '300.00' },
+      { month: '2025-09', count: 2, budget: '300.00' },
+      { month: '2026-01', count: 1, budget: '0.00' },
     ]);
   });
 
@@ -75,6 +77,7 @@ describe('GET /api/stats', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       total: 0,
+      totalBudgetYi: '0.00',
       byCategory: [],
       byStage: [],
       byOwnerCategory: [],
