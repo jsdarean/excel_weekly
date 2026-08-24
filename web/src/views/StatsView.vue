@@ -48,7 +48,50 @@
         </div>
       </div>
 
-      <!-- 二、三、分类与阶段分布 -->
+      <!-- 二、需求部门统计（近两年分别排序展示） -->
+      <div class="card demand-card">
+        <h3>需求项目统计</h3>
+        <div class="demand-grid">
+          <div class="demand-col">
+            <div class="demand-col-title">{{ stats.demandYears[0] }}年</div>
+            <div
+              v-for="d in byDemandPrev"
+              :key="d.dept"
+              class="demand-row"
+            >
+              <span class="demand-label" :title="d.dept">{{ d.dept }}</span>
+              <div class="demand-bar-track">
+                <div
+                  v-if="d.count > 0"
+                  class="demand-bar prev"
+                  :style="{ width: demandYearBarWidth(d.count, 'prev') }"
+                ></div>
+              </div>
+              <span class="demand-count-col num">{{ d.count }}</span>
+            </div>
+          </div>
+          <div class="demand-col">
+            <div class="demand-col-title">{{ stats.demandYears[1] }}年</div>
+            <div
+              v-for="d in byDemandCurr"
+              :key="d.dept"
+              class="demand-row"
+            >
+              <span class="demand-label" :title="d.dept">{{ d.dept }}</span>
+              <div class="demand-bar-track">
+                <div
+                  v-if="d.count > 0"
+                  class="demand-bar curr"
+                  :style="{ width: demandYearBarWidth(d.count, 'curr') }"
+                ></div>
+              </div>
+              <span class="demand-count-col num">{{ d.count }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 三、四、分类与阶段分布 -->
       <div class="grid-2">
         <div class="card dist-card">
           <h3>分类分布</h3>
@@ -75,8 +118,7 @@
         </div>
       </div>
 
-      <!-- 四、责任人 × 分类矩阵 -->
-      <!-- 四、五：责任人 × 分类 / 责任人 × 阶段，并排等宽等高 -->
+      <!-- 五、六：责任人 × 分类 / 责任人 × 阶段，并排等宽等高 -->
       <div class="grid-2 matrix-grid">
         <div class="card matrix-card">
           <h3>责任人 × 分类</h3>
@@ -199,6 +241,32 @@ const linePoints = computed(() => linePointArr.value.map((p) => p.join(',')).joi
 function fmtWan(v) {
   const n = Number(v);
   return Number.isFinite(n) ? String(Math.round(n)) : '';
+}
+
+// 需求部门统计：近两年分别排序，各自归一化
+const byDemandPrev = computed(() => {
+  if (!stats.value) return [];
+  return stats.value.byDemandDept
+    .map((d) => ({ dept: d.dept, count: d.prev }))
+    .filter((d) => d.count > 0)
+    .sort((a, b) => b.count - a.count || a.dept.localeCompare(b.dept, 'zh'));
+});
+const byDemandCurr = computed(() => {
+  if (!stats.value) return [];
+  return stats.value.byDemandDept
+    .map((d) => ({ dept: d.dept, count: d.curr }))
+    .filter((d) => d.count > 0)
+    .sort((a, b) => b.count - a.count || a.dept.localeCompare(b.dept, 'zh'));
+});
+const demandYearMax = computed(() => {
+  if (!stats.value) return { prev: 1, curr: 1 };
+  return {
+    prev: Math.max(...stats.value.byDemandDept.map((d) => d.prev), 1),
+    curr: Math.max(...stats.value.byDemandDept.map((d) => d.curr), 1),
+  };
+});
+function demandYearBarWidth(n, year) {
+  return `${(n / demandYearMax.value[year]) * 100}%`;
 }
 
 onMounted(async () => {
@@ -389,6 +457,72 @@ onMounted(async () => {
 .sum-row td {
   border-top: 2px solid var(--hairline);
   font-weight: 400;
+  color: var(--ink);
+}
+
+/* 需求部门统计：簇状条形图 */
+.demand-card { margin-bottom: 24px; }
+.demand-card h3 { margin-bottom: 20px; }
+.demand-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+@media (max-width: 1023px) {
+  .demand-grid { grid-template-columns: 1fr; }
+}
+.demand-col-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  padding-bottom: 12px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.demand-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.demand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.demand-label {
+  width: 160px;
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.demand-bar-track {
+  flex: 1;
+  height: 16px;
+  background: var(--canvas-soft);
+  border-radius: 0 4px 4px 0;
+  overflow: hidden;
+}
+.demand-bar {
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  transition: width 0.6s ease;
+  min-width: 2px;
+}
+.demand-bar.prev {
+  background: linear-gradient(90deg, #8ecae6, #219ebc);
+  box-shadow: 0 2px 6px rgba(33, 158, 188, 0.25);
+}
+.demand-bar.curr {
+  background: linear-gradient(90deg, #33a3dc, #0085d0);
+  box-shadow: 0 2px 6px rgba(0, 133, 208, 0.25);
+}
+.demand-count-col {
+  width: 32px;
+  text-align: right;
+  font-size: 14px;
   color: var(--ink);
 }
 </style>

@@ -59,6 +59,55 @@ describe('/api/watched', () => {
       .send({ report_date: '2026-08-21', detail: 'x' });
     expect(p.status).toBe(404);
   });
+
+  it('关注项目时自动复制 weekly_progress 数据到 watch_progress（副本，不覆盖已有）', async () => {
+    const app = await seed();
+    const { getPool } = await import('../src/db.js');
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO weekly_progress (project_code, report_date, progress)
+       VALUES ('P001', '2026-08-14', '上周进展副本'),
+              ('P001', '2026-08-21', '本周进展副本')`
+    );
+    // 预置一条同周的手工进展，验证不会被覆盖
+    await pool.query(
+      `INSERT INTO watch_progress (project_code, report_date, detail)
+       VALUES ('P001', '2026-08-21', '手工进展')`
+    );
+
+    const add = await request(app).post('/api/watched').send({ code: 'P001' });
+    expect(add.status).toBe(201);
+
+    const list = await request(app).get('/api/watched');
+    const w = list.body.watched[0];
+    expect(w.progress).toHaveLength(2);
+    expect(w.progress.map((p) => p.report_date)).toEqual(['2026-08-21', '2026-08-14']);
+    // 2026-08-21 的手工进展应保留
+    const p21 = w.progress.find((p) => p.report_date === '2026-08-21');
+    expect(p21.detail).toBe('手工进展');
+    // 2026-08-14 的 weekly_progress 被复制
+    const p14 = w.progress.find((p) => p.report_date === '2026-08-14');
+    expect(p14.detail).toBe('上周进展副本');
+  });
+
+  it('GET 关注列表时自动同步缺失的 weekly_progress 副本', async () => {
+    const app = await seed();
+    const { getPool } = await import('../src/db.js');
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO weekly_progress (project_code, report_date, progress)
+       VALUES ('P001', '2026-08-21', '本周进展同步')`
+    );
+    await request(app).post('/api/watched').send({ code: 'P001' });
+    // 直接删除已同步的副本，模拟历史关注项目缺失副本
+    await pool.query('DELETE FROM watch_progress WHERE project_code = ?', ['P001']);
+
+    const list = await request(app).get('/api/watched');
+    const w = list.body.watched[0];
+    expect(w.progress).toHaveLength(1);
+    expect(w.progress[0].report_date).toBe('2026-08-21');
+    expect(w.progress[0].detail).toBe('本周进展同步');
+  });
 });
 
 describe('/api/watched progress 变更/删除', () => {

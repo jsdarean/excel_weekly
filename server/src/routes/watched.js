@@ -16,6 +16,14 @@ router.get('/watched', async (req, res) => {
        ORDER BY w.id`
     );
     if (!watched.length) return res.json({ watched: [] });
+    // 自动把项目列表中的周进展同步到关注进展表（副本，不覆盖手工录入）
+    await pool.query(
+      `INSERT IGNORE INTO watch_progress (project_code, report_date, detail, source)
+       SELECT w.project_code, wp.report_date, wp.progress, 'weekly'
+       FROM watched_projects w
+       JOIN weekly_progress wp ON wp.project_code = w.project_code
+       WHERE wp.progress IS NOT NULL AND TRIM(wp.progress) <> ''`
+    );
     const codes = watched.map((w) => w.project_code);
     const [progress] = await pool.query(
       `SELECT id, project_code, report_date, detail
@@ -48,6 +56,14 @@ router.post('/watched', async (req, res) => {
     const [w] = await pool.query('SELECT 1 AS x FROM watched_projects WHERE project_code = ?', [code]);
     if (w.length) return res.status(409).json({ error: '该项目已在关注列表中' });
     const [r] = await pool.query('INSERT INTO watched_projects (project_code) VALUES (?)', [code]);
+    // 把该项目已有的周进展复制一份到关注项目进展表（不覆盖手工录入的进展）
+    await pool.query(
+      `INSERT IGNORE INTO watch_progress (project_code, report_date, detail, source)
+       SELECT project_code, report_date, progress, 'weekly'
+       FROM weekly_progress
+       WHERE project_code = ? AND progress IS NOT NULL AND TRIM(progress) <> ''`,
+      [code]
+    );
     res.status(201).json({ id: r.insertId });
   } catch (e) {
     res.status(500).json({ error: `操作失败：${e.message}` });
@@ -87,7 +103,7 @@ router.post('/watched/:code/progress', async (req, res) => {
     );
     if (dup.length) return res.status(409).json({ error: '该周的详细进展已录入过' });
     const [r] = await pool.query(
-      'INSERT INTO watch_progress (project_code, report_date, detail) VALUES (?, ?, ?)',
+      "INSERT INTO watch_progress (project_code, report_date, detail, source) VALUES (?, ?, ?, 'manual')",
       [req.params.code, req.body.report_date, String(req.body.detail).trim()]
     );
     res.status(201).json({ id: r.insertId });
@@ -105,7 +121,7 @@ router.put('/watched/progress/:id', async (req, res) => {
     const [exists] = await pool.query('SELECT id FROM watch_progress WHERE id = ?', [req.params.id]);
     if (!exists.length) return res.status(404).json({ error: '进展记录不存在' });
     await pool.query(
-      'UPDATE watch_progress SET report_date = ?, detail = ? WHERE id = ?',
+      "UPDATE watch_progress SET report_date = ?, detail = ?, source = 'manual' WHERE id = ?",
       [req.body.report_date, String(req.body.detail).trim(), req.params.id]
     );
     res.json({ id: Number(req.params.id) });

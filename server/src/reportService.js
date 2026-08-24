@@ -58,7 +58,7 @@ export async function buildReportData(pool) {
       budgetYi: row ? (Number(row.budget) / 10000).toFixed(2) : '0.00',
       highlights: hls.length
         ? hls
-            .map((h, i) => `${i + 1}、${h.project_name}，${String(h.detail).replace(/。+\s*$/, '')}。`)
+            .map((h, i) => `${i + 1}、${h.project_name}，${String(h.detail).replace(/本周/g, '').replace(/。+\s*$/, '')}。`)
             .join('\n')
         : '（无）',
     };

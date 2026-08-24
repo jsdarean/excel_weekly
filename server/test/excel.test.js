@@ -45,6 +45,7 @@ describe('parseWeeklyReport', () => {
         projectCode: 'P001', categoryMajor: '业务网', projectName: '项目甲',
         approvalDate: '2025-09-09', category: '基础能力', owner: '张三',
         budgetWan: 320, stage: '项目实施阶段', content: '建设内容甲',
+        demandDept: null, demandRoom: null, demandOwner: null,
       },
     ]);
     expect(r.progress).toEqual([

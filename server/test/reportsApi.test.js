@@ -7,9 +7,9 @@ import { resetDb } from './helpers/db.js';
 async function seed() {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO projects (project_code, project_name, category, owner, stage)
-     VALUES ('P001', '项目甲', '基础能力', '张三', '项目实施阶段'),
-            ('P002', '项目乙', '支撑后端', '李四', '勘察设计阶段')`
+    `INSERT INTO projects (project_code, project_name, category, owner, stage, demand_dept)
+     VALUES ('P001', '项目甲', '基础能力', '张三', '项目实施阶段', '市场部/政企部'),
+            ('P002', '项目乙', '支撑后端', '李四', '勘察设计阶段', '网络部')`
   );
   await pool.query(
     `INSERT INTO weekly_progress (project_code, report_date, progress)
@@ -79,6 +79,26 @@ describe('GET /api/reports', () => {
     const none = await request(createApp())
       .get('/api/reports')
       .query({ category: '基础能力', owner: '李四' });
+    expect(none.body.rows).toHaveLength(0);
+  });
+
+  it('keyword 同时模糊搜索项目编码、项目名称和需求部门', async () => {
+    // 按拆分后的部门模糊匹配
+    const byMarket = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: '市场' });
+    expect(byMarket.body.rows).toHaveLength(1);
+    expect(byMarket.body.rows[0].project_code).toBe('P001');
+
+    const byGov = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: '政企' });
+    expect(byGov.body.rows).toHaveLength(1);
+    expect(byGov.body.rows[0].project_code).toBe('P001');
+
+    const none = await request(createApp())
+      .get('/api/reports')
+      .query({ keyword: '不存在' });
     expect(none.body.rows).toHaveLength(0);
   });
 

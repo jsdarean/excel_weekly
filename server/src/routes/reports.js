@@ -29,15 +29,15 @@ router.get('/reports', async (req, res) => {
       params.push(req.query.stage);
     }
     if (req.query.keyword) {
-      conds.push('(p.project_code LIKE ? OR p.project_name LIKE ?)');
+      conds.push('(p.project_code LIKE ? OR p.project_name LIKE ? OR p.demand_dept LIKE ?)');
       const kw = `%${req.query.keyword}%`;
-      params.push(kw, kw);
+      params.push(kw, kw, kw);
     }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const [rows] = await pool.query(
       `SELECT p.id, p.project_code, p.category_major, p.project_name,
               p.approval_date, p.category, p.owner, p.budget_wan, p.stage,
-              p.content,
+              p.content, p.demand_dept, p.demand_room, p.demand_owner,
               w.report_date, w.progress, w.purchase_rate, w.disclosure,
               w.arrival_rate, w.online_handover, w.final_acceptance
        FROM projects p

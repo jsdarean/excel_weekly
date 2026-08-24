@@ -37,9 +37,22 @@ export async function initDatabase() {
     budget_wan DECIMAL(12,2) NULL,
     stage VARCHAR(64),
     content TEXT,
+    demand_dept VARCHAR(128),
+    demand_room VARCHAR(128),
+    demand_owner VARCHAR(64),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  for (const col of ['demand_dept', 'demand_room', 'demand_owner']) {
+    const [exists] = await p.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = ?`,
+      [col]
+    );
+    if (exists.length === 0) {
+      await p.query(`ALTER TABLE projects ADD COLUMN ${col} VARCHAR(128)`);
+    }
+  }
   await p.query(`CREATE TABLE IF NOT EXISTS weekly_progress (
     id INT AUTO_INCREMENT PRIMARY KEY,
     project_code VARCHAR(64) NOT NULL,
@@ -73,10 +86,28 @@ export async function initDatabase() {
     project_code VARCHAR(64) NOT NULL,
     report_date DATE NOT NULL,
     detail TEXT,
+    source VARCHAR(16) NOT NULL DEFAULT 'manual',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_watch_week (project_code, report_date)
   )`);
+  // 兼容旧表：若 source 字段不存在则追加
+  const [cols] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'watch_progress' AND column_name = 'source'`
+  );
+  if (cols.length === 0) {
+    await p.query(
+      `ALTER TABLE watch_progress ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'manual'`
+    );
+    // 初始化旧数据：与 weekly_progress 存在对应关系的行标记为 weekly 副本
+    await p.query(
+      `UPDATE watch_progress wp
+       JOIN weekly_progress wpr
+         ON wpr.project_code = wp.project_code AND wpr.report_date = wp.report_date
+       SET wp.source = 'weekly'`
+    );
+  }
   await p.query(`CREATE TABLE IF NOT EXISTS report_templates (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(64) NOT NULL DEFAULT '默认模板',

@@ -6,6 +6,7 @@ const COL = {
   category: 5, owner: 6, budgetWan: 7, stage: 8, content: 9,
   progress: 11, purchaseRate: 12, disclosure: 13, arrivalRate: 14,
   onlineHandover: 15, finalAcceptance: 16,
+  demandDept: 17, demandRoom: 18, demandOwner: 19,
 };
 
 export function parseHeaderDate(header) {
@@ -92,7 +93,7 @@ export function parseWeeklyReport(buffer) {
 
   for (const row of rows.slice(1)) {
     const hasContent = row
-      .slice(1, 17)
+      .slice(1, 20)
       .some((v) => v !== null && v !== undefined && String(v).trim() !== '');
     if (!hasContent) continue;
     const code = toText(row[COL.projectCode]);
@@ -110,6 +111,9 @@ export function parseWeeklyReport(buffer) {
       budgetWan: toNumber(row[COL.budgetWan]),
       stage: toText(row[COL.stage]),
       content: toText(row[COL.content]),
+      demandDept: toText(row[COL.demandDept]),
+      demandRoom: toText(row[COL.demandRoom]),
+      demandOwner: toText(row[COL.demandOwner]),
     });
     progress.push({
       projectCode: code,

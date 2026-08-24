@@ -22,8 +22,9 @@ export async function importData(pool, parsed, reportDate) {
       await conn.query(
         `INSERT INTO projects
            (project_code, category_major, project_name, approval_date,
-            category, owner, budget_wan, stage, content)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            category, owner, budget_wan, stage, content,
+            demand_dept, demand_room, demand_owner)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            category_major = VALUES(category_major),
            project_name = VALUES(project_name),
@@ -32,9 +33,13 @@ export async function importData(pool, parsed, reportDate) {
            owner = VALUES(owner),
            budget_wan = VALUES(budget_wan),
            stage = VALUES(stage),
-           content = VALUES(content)`,
+           content = VALUES(content),
+           demand_dept = VALUES(demand_dept),
+           demand_room = VALUES(demand_room),
+           demand_owner = VALUES(demand_owner)`,
         [p.projectCode, p.categoryMajor, p.projectName, p.approvalDate,
-         p.category, p.owner, p.budgetWan, p.stage, p.content]
+         p.category, p.owner, p.budgetWan, p.stage, p.content,
+         p.demandDept, p.demandRoom, p.demandOwner]
       );
       if (exist.length > 0) updated++;
       else inserted++;
@@ -58,6 +63,26 @@ export async function importData(pool, parsed, reportDate) {
       );
       progressWritten++;
     }
+    // 同步更新已关注项目的 weekly 副本（手工修改的 source='manual' 不覆盖）
+    await conn.query(
+      `UPDATE watch_progress wp
+       JOIN watched_projects w ON w.project_code = wp.project_code
+       JOIN weekly_progress wpr
+         ON wpr.project_code = wp.project_code AND wpr.report_date = wp.report_date
+       SET wp.detail = wpr.progress
+       WHERE wp.source = 'weekly' AND wpr.report_date = ?`,
+      [reportDate]
+    );
+    // 导入新周次时，为已关注项目补一份副本
+    await conn.query(
+      `INSERT IGNORE INTO watch_progress (project_code, report_date, detail, source)
+       SELECT w.project_code, wpr.report_date, wpr.progress, 'weekly'
+       FROM watched_projects w
+       JOIN weekly_progress wpr
+         ON wpr.project_code = w.project_code AND wpr.report_date = ?
+       WHERE wpr.progress IS NOT NULL AND TRIM(wpr.progress) <> ''`,
+      [reportDate]
+    );
     await conn.commit();
     return { inserted, updated, progressWritten };
   } catch (e) {

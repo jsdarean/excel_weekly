@@ -109,12 +109,12 @@ describe('/api/report-templates 与 /api/report-preview', () => {
     expect(prev.status).toBe(200);
     // 72400 万元 = 7.24 亿元
     expect(prev.body.text).toBe(
-      '共3个项目，取消1个。收入相关（1个，占33.3%，约7.24亿元）\n1、项目甲，本周详情。'
+      '共3个项目，取消1个。收入相关（1个，占33.3%，约7.24亿元）\n1、项目甲，详情。'
     );
     // 不带 id 用第一个模板
     const prev2 = await request(app).get('/api/report-preview');
     expect(prev2.body.text).toBe(
-      '共3个项目，取消1个。收入相关（1个，占33.3%，约7.24亿元）\n1、项目甲，本周详情。'
+      '共3个项目，取消1个。收入相关（1个，占33.3%，约7.24亿元）\n1、项目甲，详情。'
     );
   });
 

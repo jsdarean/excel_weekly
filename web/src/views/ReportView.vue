@@ -43,7 +43,10 @@
     <div v-if="generated" class="card result-card">
       <div class="card-head">
         <h3>生成结果</h3>
-        <button @click="copy">{{ copyTip || '复制' }}</button>
+        <div class="result-actions">
+          <button @click="copy">{{ copyTip || '复制纯文本' }}</button>
+          <button @click="copyAsEmail">{{ emailCopyTip || '复制邮件格式' }}</button>
+        </div>
       </div>
       <pre class="result">{{ generated }}</pre>
     </div>
@@ -62,6 +65,7 @@ const generating = ref(false);
 const error = ref('');
 const savedTip = ref('');
 const copyTip = ref('');
+const emailCopyTip = ref('');
 
 const placeholderTip =
   '在此粘贴模板，使用 {{项目总数}}、{{拟取消数}}、{{收入相关_项目数}}、{{收入相关_占比}}、{{收入相关_金额亿}}、{{收入相关_重点进展}} 等占位符';
@@ -191,6 +195,63 @@ async function copy() {
   }
 }
 
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+const generatedEmailHtml = computed(() => {
+  if (!generated.value) return '';
+  const lines = escapeHtml(generated.value).split('\n');
+  const out = [];
+  let inList = false;
+  for (const line of lines) {
+    const heading = line.match(/^([一二三四五六七八九十]+、)(.*)$/);
+    const item = line.match(/^(\d+、)(.*)$/);
+    if (heading) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push(`<h3 style="margin:14px 0 6px 0;font-size:12pt;color:#000;font-weight:bold;">${heading[1]}${heading[2]}</h3>`);
+    } else if (item) {
+      if (!inList) { out.push('<ul style="margin:0 0 8px 20px;padding:0;">'); inList = true; }
+      out.push(`<li style="margin-bottom:4px;line-height:1.6;font-size:12pt;color:#000;">${item[2]}</li>`);
+    } else if (line.trim() === '') {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push('<br>');
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push(`<p style="margin:0 0 8px 0;line-height:1.6;font-size:12pt;color:#000;">${line}</p>`);
+    }
+  }
+  if (inList) out.push('</ul>');
+  return `<div style="font-family:宋体,SimSun,sans-serif;font-size:12pt;color:#000;">${out.join('')}</div>`;
+});
+
+async function copyAsEmail() {
+  try {
+    const html = generatedEmailHtml.value;
+    const plain = generated.value;
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      }),
+    ]);
+    emailCopyTip.value = '已复制邮件格式';
+  } catch {
+    // 不支持 ClipboardItem 时回退到纯文本
+    try {
+      await navigator.clipboard.writeText(generated.value);
+      emailCopyTip.value = '已复制纯文本';
+    } catch {
+      emailCopyTip.value = '复制失败';
+      return;
+    }
+  }
+  setTimeout(() => { emailCopyTip.value = ''; }, 2000);
+}
+
 onMounted(async () => {
   try {
     await load();
@@ -253,4 +314,5 @@ onMounted(async () => {
   white-space: pre-wrap;
   margin: 0;
 }
+.result-actions { display: flex; gap: 12px; }
 </style>

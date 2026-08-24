@@ -7,7 +7,7 @@
         <input
           type="text"
           v-model="filters.keyword"
-          placeholder="搜索项目编码 / 项目名称"
+          placeholder="搜索项目编码 / 项目名称 / 需求部门"
           class="search-input"
           @input="onKeywordInput"
         />
@@ -65,6 +65,9 @@
             <th class="nowrap">到货完成率</th>
             <th class="nowrap">是否上线交维</th>
             <th class="nowrap">是否竣工验收</th>
+            <th class="nowrap" :style="demandColStyle">需求部门</th>
+            <th class="nowrap" :style="demandColStyle">需求室</th>
+            <th class="nowrap" :style="demandColStyle">需求责任人</th>
           </tr>
         </thead>
         <tbody>
@@ -88,6 +91,15 @@
             <td class="nowrap num">{{ fmtRate(r.arrival_rate) }}</td>
             <td class="nowrap">{{ r.online_handover }}</td>
             <td class="nowrap">{{ r.final_acceptance }}</td>
+            <td class="nowrap" :style="demandColStyle">
+              <span class="clip" @mouseenter="showTip($event, r.demand_dept)" @mouseleave="hideTip">{{ r.demand_dept }}</span>
+            </td>
+            <td class="nowrap" :style="demandColStyle">
+              <span class="clip" @mouseenter="showTip($event, r.demand_room)" @mouseleave="hideTip">{{ r.demand_room }}</span>
+            </td>
+            <td class="nowrap" :style="demandColStyle">
+              <span class="clip" @mouseenter="showTip($event, r.demand_owner)" @mouseleave="hideTip">{{ r.demand_owner }}</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -150,6 +162,12 @@ const nameColStyle = computed(() =>
     : {}
 );
 const contentColStyle = nameColStyle;
+// 需求部门/需求室/需求责任人：列宽与项目编码保持一致
+const demandColStyle = computed(() =>
+  colWidths.code
+    ? { width: `${colWidths.code}px`, maxWidth: `${colWidths.code}px` }
+    : {}
+);
 
 async function syncColWidths() {
   await nextTick();

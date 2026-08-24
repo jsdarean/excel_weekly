@@ -7,13 +7,13 @@ import { resetDb } from './helpers/db.js';
 async function seed() {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO projects (project_code, project_name, category, owner, stage, approval_date, budget_wan)
-     VALUES ('P001', 'a', '收入相关', '张三', '项目实施阶段', '2025-09-09', 100),
-            ('P002', 'b', '基础能力', '张三', '勘察设计阶段', '2025-09-20', 200),
-            ('P003', 'c', '基础能力', '李四', '项目实施阶段', '2025-08-04', 300),
-            ('P004', 'd', '支撑后端', '李四', '项目实施阶段', '2026-01-15', NULL),
-            ('P005', 'e', '拟取消', '王五', '终验归档阶段', NULL, 50),
-            ('P006', 'f', NULL, NULL, NULL, NULL, NULL)`
+    `INSERT INTO projects (project_code, project_name, category, owner, stage, approval_date, budget_wan, demand_dept)
+     VALUES ('P001', 'a', '收入相关', '张三', '项目实施阶段', '2025-09-09', 100, 'A部门'),
+            ('P002', 'b', '基础能力', '张三', '勘察设计阶段', '2025-09-20', 200, 'A部门/B部门'),
+            ('P003', 'c', '基础能力', '李四', '项目实施阶段', '2025-08-04', 300, 'B部门'),
+            ('P004', 'd', '支撑后端', '李四', '项目实施阶段', '2026-01-15', NULL, 'A部门'),
+            ('P005', 'e', '拟取消', '王五', '终验归档阶段', NULL, 50, 'C部门'),
+            ('P006', 'f', NULL, NULL, NULL, NULL, NULL, NULL)`
   );
 }
 
@@ -69,6 +69,12 @@ describe('GET /api/stats', () => {
       { month: '2025-09', count: 2, budget: '300.00' },
       { month: '2026-01', count: 1, budget: '0.00' },
     ]);
+
+    // 需求部门统计：按 / 拆分，按近两年（去年、今年）分列，按总数降序
+    expect(res.body.byDemandDept).toEqual([
+      { dept: 'A部门', prev: 2, curr: 1, total: 3 },
+      { dept: 'B部门', prev: 2, curr: 0, total: 2 },
+    ]);
   });
 
   it('空库返回零值结构', async () => {
@@ -83,6 +89,8 @@ describe('GET /api/stats', () => {
       byOwnerCategory: [],
       byOwnerStage: [],
       byMonth: [],
+      byDemandDept: [],
+      demandYears: [2025, 2026],
     });
   });
 });

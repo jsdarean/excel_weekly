@@ -9,6 +9,8 @@ const CATEGORY_ORDER = ['收入相关', '基础能力', '支撑后端', '拟取�
 router.get('/stats', async (req, res) => {
   try {
     const pool = getPool();
+    const currYear = new Date().getFullYear();
+    const prevYear = currYear - 1;
 
     const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM projects');
     const [[{ budgetSum }]] = await pool.query(
@@ -16,7 +18,10 @@ router.get('/stats', async (req, res) => {
     );
     const totalBudgetYi = (Number(budgetSum) / 10000).toFixed(2);
     if (total === 0) {
-      return res.json({ total: 0, totalBudgetYi, byCategory: [], byStage: [], byOwnerCategory: [], byOwnerStage: [], byMonth: [] });
+      return res.json({
+        total: 0, totalBudgetYi, byCategory: [], byStage: [], byOwnerCategory: [],
+        byOwnerStage: [], byMonth: [], byDemandDept: [], demandYears: [prevYear, currYear],
+      });
     }
 
     const [catRows] = await pool.query(
@@ -84,7 +89,33 @@ router.get('/stats', async (req, res) => {
     );
     const byMonth = monthRows.map((r) => ({ month: r.ym, count: r.n, budget: String(r.budget) }));
 
-    res.json({ total, totalBudgetYi, byCategory, byStage, byOwnerCategory, byOwnerStage, byMonth });
+    // 需求部门统计：近 2 年，按 / 拆分需求部门，按项目总数降序
+    const [demandRows] = await pool.query(
+      `SELECT YEAR(approval_date) AS yr, demand_dept
+       FROM projects WHERE approval_date IS NOT NULL`
+    );
+    const dmap = new Map();
+    for (const r of demandRows) {
+      const yr = Number(r.yr);
+      if (yr !== prevYear && yr !== currYear) continue;
+      const depts = r.demand_dept
+        ? String(r.demand_dept).split('/').map((s) => s.trim()).filter(Boolean)
+        : ['未填写'];
+      for (const d of depts) {
+        if (!dmap.has(d)) dmap.set(d, { dept: d, prev: 0, curr: 0, total: 0 });
+        const entry = dmap.get(d);
+        if (yr === prevYear) entry.prev++;
+        else entry.curr++;
+        entry.total++;
+      }
+    }
+    const byDemandDept = [...dmap.values()]
+      .sort((a, b) => b.total - a.total || a.dept.localeCompare(b.dept, 'zh'));
+
+    res.json({
+      total, totalBudgetYi, byCategory, byStage, byOwnerCategory, byOwnerStage,
+      byMonth, byDemandDept, demandYears: [prevYear, currYear],
+    });
   } catch (e) {
     res.status(500).json({ error: `统计失败：${e.message}` });
   }
