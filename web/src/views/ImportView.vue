@@ -35,8 +35,8 @@
         只处理"工程管理经理-主"在人员配置中的项目：阶段不一致的更新阶段（工程实施阶段→项目实施阶段、审计归档阶段→终验归档阶段），库里没有的新增项目。
       </p>
       <div class="form">
-        <label>Excel 文件
-          <input type="file" accept=".xlsx,.xls" @change="onPmsFile" />
+        <label>Excel / ZIP 文件
+          <input type="file" accept=".xlsx,.xls,.zip" @change="onPmsFile" />
         </label>
         <button class="primary" :disabled="!pmsFile || pmsLoading" @click="submitPms">
           {{ pmsLoading ? '导入中…' : '导入' }}
@@ -56,14 +56,16 @@
           <p class="detail-title">更新阶段明细：</p>
           <ul class="detail-list">
             <li v-for="u in pmsResult.updatedList" :key="u.projectCode" class="num">
-              {{ u.projectCode }}：{{ u.from }} → {{ u.to }}
+              {{ u.projectCode }} / {{ u.projectName }} / {{ u.manager }}：{{ u.from }} → {{ u.to }}
             </li>
           </ul>
         </template>
         <template v-if="pmsResult.insertedList.length">
           <p class="detail-title">新增项目：</p>
           <ul class="detail-list">
-            <li v-for="c in pmsResult.insertedList" :key="c" class="num">{{ c }}</li>
+            <li v-for="c in pmsResult.insertedList" :key="c.projectCode" class="num">
+              {{ c.projectCode }} / {{ c.projectName }} / {{ c.manager }}
+            </li>
           </ul>
         </template>
       </div>
