@@ -54,6 +54,39 @@ export function buildExportData(rows, reportDate) {
   return [header, ...body];
 }
 
+// 附件下载：去掉空白的下周进展列（L 列）
+export function buildAttachmentData(rows, reportDate) {
+  const header = [
+    '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '分类',
+    '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
+    `周进展(${reportDate})`,
+    '主设备请购完成率', '是否交底', '主设备到货完成率', '是否上线交维',
+    '是否竣工验收', '需求部门', '需求室', '需求责任人',
+  ];
+  const body = rows.map((r, i) => [
+    i + 1,
+    toStr(r.category_major),
+    toStr(r.project_code),
+    toStr(r.project_name),
+    toStr(r.approval_date),
+    toStr(r.category),
+    toStr(r.owner),
+    toNum(r.budget_wan),
+    toStr(r.stage),
+    toStr(r.content),
+    toStr(r.progress),
+    toNum(r.purchase_rate),
+    toStr(r.disclosure),
+    toNum(r.arrival_rate),
+    toStr(r.online_handover),
+    toStr(r.final_acceptance),
+    toStr(r.demand_dept),
+    toStr(r.demand_room),
+    toStr(r.demand_owner),
+  ]);
+  return [header, ...body];
+}
+
 // 样式常量（参考 核心网室项目每周进展20260821.xlsx）
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B0F0' } };
 const HEADER_FONT = { name: '宋体', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -99,6 +132,16 @@ const HEADER_ALIGN = COL_ALIGN.map((a, i) =>
 
 const PERCENT_COLS = [13, 15]; // M、O 列（1 基）
 
+// 附件版本常量：删除 L 列（下周进展）后，百分比列变为 L、N
+const ATTACHMENT_COL_WIDTHS = COL_WIDTHS.filter((_, i) => i !== 11);
+const ATTACHMENT_COL_ALIGN = COL_ALIGN.filter((_, i) => i !== 11);
+const ATTACHMENT_HEADER_ALIGN = ATTACHMENT_COL_ALIGN.map((a, i) =>
+  i === 3 || i === 4
+    ? { horizontal: 'left', vertical: 'middle', wrapText: true }
+    : { horizontal: 'center', vertical: 'middle', wrapText: true }
+);
+const ATTACHMENT_PERCENT_COLS = [12, 14]; // L、N 列（1 基）
+
 export function buildWorkbook(rows, reportDate) {
   const aoa = buildExportData(rows, reportDate);
   const wb = new ExcelJS.Workbook();
@@ -128,6 +171,47 @@ export function buildWorkbook(rows, reportDate) {
 
 export async function exportReports(rows, reportDate) {
   const wb = buildWorkbook(rows, reportDate);
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = String(reportDate).replace(/-/g, '');
+  a.href = url;
+  a.download = `核心网室项目每周进展${dateStr}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function buildAttachmentWorkbook(rows, reportDate) {
+  const aoa = buildAttachmentData(rows, reportDate);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(`周报${reportDate}`);
+
+  ws.columns = ATTACHMENT_COL_WIDTHS.map((w) => ({ width: w }));
+
+  aoa.forEach((rowData, rIdx) => {
+    const row = ws.addRow(rowData);
+    const isHeader = rIdx === 0;
+    if (isHeader) row.height = HEADER_HEIGHT;
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cell.border = BORDER;
+      cell.font = isHeader ? HEADER_FONT : DATA_FONT;
+      cell.alignment = isHeader ? ATTACHMENT_HEADER_ALIGN[colNumber - 1] : ATTACHMENT_COL_ALIGN[colNumber - 1];
+      if (isHeader) {
+        cell.fill = HEADER_FILL;
+      } else if (ATTACHMENT_PERCENT_COLS.includes(colNumber)) {
+        cell.numFmt = '0%';
+      }
+    });
+  });
+
+  return wb;
+}
+
+export async function exportAttachment(rows, reportDate) {
+  const wb = buildAttachmentWorkbook(rows, reportDate);
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h2>生成周报</h2>
+    <h2>周报管理</h2>
 
     <div class="card">
       <div class="card-head">
@@ -13,9 +13,14 @@
           <button @click="saveAs" :disabled="templates.length >= 5">另存为新模板</button>
           <button class="danger-btn" @click="remove" :disabled="!currentId">删除</button>
         </div>
-        <button class="primary" :disabled="generating || !currentId" @click="generate">
-          {{ generating ? '生成中…' : '生成预览' }}
-        </button>
+        <div class="report-actions">
+          <button :disabled="downloading" @click="downloadAttachment">
+            {{ downloading ? '下载中…' : '附件下载' }}
+          </button>
+          <button class="primary" :disabled="generating || !currentId" @click="generate">
+            {{ generating ? '生成中…' : '生成预览' }}
+          </button>
+        </div>
       </div>
 
       <div v-if="!templates.length" class="empty-box">
@@ -56,12 +61,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api.js';
+import { exportAttachment } from '../exportExcel.js';
 
 const templates = ref([]);
 const currentId = ref(null);
 const template = ref('');
 const generated = ref('');
 const generating = ref(false);
+const downloading = ref(false);
 const error = ref('');
 const savedTip = ref('');
 const copyTip = ref('');
@@ -182,6 +189,23 @@ async function generate() {
     error.value = e.message;
   } finally {
     generating.value = false;
+  }
+}
+
+async function downloadAttachment() {
+  downloading.value = true;
+  error.value = '';
+  try {
+    const res = await api.getReports({});
+    if (!res.reportDate) {
+      error.value = '暂无周报数据，请先到「数据导入」页导入。';
+      return;
+    }
+    await exportAttachment(res.rows, res.reportDate);
+  } catch (e) {
+    error.value = `附件下载失败：${e.message}`;
+  } finally {
+    downloading.value = false;
   }
 }
 
@@ -315,4 +339,5 @@ onMounted(async () => {
   margin: 0;
 }
 .result-actions { display: flex; gap: 12px; }
+.report-actions { display: flex; align-items: center; gap: 12px; }
 </style>

@@ -4,7 +4,7 @@
       <span class="brand">工程周报管理</span>
       <router-link to="/">项目列表</router-link>
       <router-link to="/watched">关注项目</router-link>
-      <router-link to="/report">生成周报</router-link>
+      <router-link to="/report">周报管理</router-link>
       <router-link to="/stats">项目统计</router-link>
       <router-link to="/import">数据导入</router-link>
       <router-link to="/persons">人员配置</router-link>
