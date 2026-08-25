@@ -50,16 +50,25 @@ describe('PUT /api/projects/:code', () => {
     await seed();
   });
 
-  it('可修改分类和项目阶段', async () => {
+  it('可修改分类、项目阶段、需求部门/室/责任人', async () => {
     const res = await request(createApp())
       .put('/api/projects/P001')
-      .send({ category: '收入相关', stage: '工程验收阶段' });
+      .send({
+        category: '收入相关',
+        stage: '工程验收阶段',
+        demand_dept: '市场部/政企部',
+        demand_room: '政企客户室',
+        demand_owner: '王五',
+      });
     expect(res.status).toBe(200);
     const [rows] = await getPool().query(
-      "SELECT category, stage FROM projects WHERE project_code = 'P001'"
+      "SELECT category, stage, demand_dept, demand_room, demand_owner FROM projects WHERE project_code = 'P001'"
     );
     expect(rows[0].category).toBe('收入相关');
     expect(rows[0].stage).toBe('工程验收阶段');
+    expect(rows[0].demand_dept).toBe('市场部/政企部');
+    expect(rows[0].demand_room).toBe('政企客户室');
+    expect(rows[0].demand_owner).toBe('王五');
   });
 
   it('非法分类/阶段返回 400', async () => {

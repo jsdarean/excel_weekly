@@ -98,4 +98,16 @@ export const api = {
     fd.append('file', file);
     return request('/api/import-pms', { method: 'POST', body: fd });
   },
+  previewPms(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request('/api/import-pms/preview', { method: 'POST', body: fd });
+  },
+  applyPms(body) {
+    return request('/api/import-pms/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  },
 };

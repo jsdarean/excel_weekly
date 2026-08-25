@@ -27,6 +27,9 @@
             </select>
           </div>
           <div class="info-item wide"><label>建设内容</label><span>{{ project.content }}</span></div>
+          <div class="info-item"><label>需求部门</label><input v-model="editDemandDept" type="text" placeholder="-" /></div>
+          <div class="info-item"><label>需求室</label><input v-model="editDemandRoom" type="text" placeholder="-" /></div>
+          <div class="info-item"><label>需求责任人</label><input v-model="editDemandOwner" type="text" placeholder="-" /></div>
         </div>
         <div class="save-row">
           <button class="primary" :disabled="!dirty || saving" @click="save">
@@ -81,14 +84,27 @@ const progress = ref([]);
 const error = ref('');
 const editCategory = ref('');
 const editStage = ref('');
+const editDemandDept = ref('');
+const editDemandRoom = ref('');
+const editDemandOwner = ref('');
 const saving = ref(false);
 const savedTip = ref('');
 const saveError = ref('');
 
-const dirty = computed(() =>
-  project.value &&
-  (editCategory.value !== project.value.category || editStage.value !== project.value.stage)
-);
+function norm(v) {
+  return v === null || v === undefined ? '' : String(v);
+}
+
+const dirty = computed(() => {
+  if (!project.value) return false;
+  return (
+    editCategory.value !== norm(project.value.category) ||
+    editStage.value !== norm(project.value.stage) ||
+    editDemandDept.value !== norm(project.value.demand_dept) ||
+    editDemandRoom.value !== norm(project.value.demand_room) ||
+    editDemandOwner.value !== norm(project.value.demand_owner)
+  );
+});
 
 function fmtRate(v) {
   if (v === null || v === undefined || v === '') return '';
@@ -101,9 +117,19 @@ async function save() {
   savedTip.value = '';
   saveError.value = '';
   try {
-    await api.updateProject(code, { category: editCategory.value, stage: editStage.value });
+    const body = {
+      category: editCategory.value,
+      stage: editStage.value,
+      demand_dept: editDemandDept.value,
+      demand_room: editDemandRoom.value,
+      demand_owner: editDemandOwner.value,
+    };
+    await api.updateProject(code, body);
     project.value.category = editCategory.value;
     project.value.stage = editStage.value;
+    project.value.demand_dept = editDemandDept.value || null;
+    project.value.demand_room = editDemandRoom.value || null;
+    project.value.demand_owner = editDemandOwner.value || null;
     savedTip.value = '已保存';
     setTimeout(() => { savedTip.value = ''; }, 2000);
   } catch (e) {
@@ -118,8 +144,11 @@ onMounted(async () => {
     const res = await api.getProject(code);
     project.value = res.project;
     progress.value = res.progress;
-    editCategory.value = res.project.category;
-    editStage.value = res.project.stage;
+    editCategory.value = norm(res.project.category);
+    editStage.value = norm(res.project.stage);
+    editDemandDept.value = norm(res.project.demand_dept);
+    editDemandRoom.value = norm(res.project.demand_room);
+    editDemandOwner.value = norm(res.project.demand_owner);
   } catch (e) {
     error.value = e.message;
   }
@@ -138,7 +167,9 @@ onMounted(async () => {
 .info-item.wide { grid-column: span 3; }
 .info-item label { font-size: 13px; color: var(--ink-mute); }
 .info-item span { font-size: 15px; }
-.info-item select { align-self: flex-start; min-width: 160px; }
+.info-item select,
+.info-item input { align-self: flex-start; min-width: 160px; padding: 6px 8px; border: 1px solid var(--hairline-input); border-radius: var(--r-sm); font-size: 14px; }
+.info-item input:focus { outline: none; border-color: var(--primary); }
 .save-row { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
 .saved-tip { color: #1a7f37; font-size: 13px; }
 .progress-card { padding-bottom: 16px; }

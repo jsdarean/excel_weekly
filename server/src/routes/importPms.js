@@ -68,41 +68,195 @@ function parsePmsMoney(v) {
   return num / 10000;
 }
 
+function readRowsFromBuffer(fileBuffer, originalname) {
+  let buf = fileBuffer;
+  const isUploadedZip = String(originalname || '').toLowerCase().endsWith('.zip');
+  if (isUploadedZip) {
+    buf = extractXlsxFromZip(buf);
+  }
+  const wb = xlsx.read(buf, { type: 'buffer' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return xlsx.utils.sheet_to_json(ws, { header: 1, defval: null });
+}
+
+function parseHeader(rows) {
+  const header = (rows[0] || []).map((h) => String(h ?? '').trim());
+  const idx = {};
+  for (const name of REQUIRED_COLS) idx[name] = header.indexOf(name);
+  for (const name of OPTIONAL_COLS) idx[name] = header.indexOf(name);
+  const missing = REQUIRED_COLS.filter((n) => idx[n] === -1);
+  if (missing.length) throw new Error(`Excel 缺少关键列：${missing.join('、')}`);
+  return idx;
+}
+
+function parsePmsRows(rows, personNames) {
+  const idx = parseHeader(rows);
+  const parsed = [];
+  for (const row of rows.slice(1)) {
+    const code = row[idx['项目编码']] == null ? '' : String(row[idx['项目编码']]).trim();
+    if (!code) continue;
+    const manager = row[idx['工程管理经理-主']] == null ? '' : String(row[idx['工程管理经理-主']]).trim();
+    if (!personNames.has(manager)) continue;
+    const rawStage = row[idx['项目阶段']] == null ? '' : String(row[idx['项目阶段']]).trim();
+    const stage = STAGE_MAP[rawStage];
+    if (!stage) continue;
+    parsed.push({
+      projectCode: code,
+      projectName: row[idx['项目名称']] == null ? '' : String(row[idx['项目名称']]).trim(),
+      manager,
+      stage,
+      approvalDate: idx['第一次立项批复完成时间'] >= 0 ? parsePmsDate(row[idx['第一次立项批复完成时间']]) : null,
+      budgetWan: idx['第一次立项批复金额'] >= 0 ? parsePmsMoney(row[idx['第一次立项批复金额']]) : null,
+    });
+  }
+  return parsed;
+}
+
+async function buildPreview(pool, rows) {
+  const [personRows] = await pool.query('SELECT name FROM persons');
+  const personNames = new Set(personRows.map((p) => p.name));
+  const parsed = parsePmsRows(rows, personNames);
+
+  const toInsert = [];
+  const stageChanges = [];
+  let unchanged = 0;
+  let skippedNoPerson = 0;
+  let skippedStage = 0;
+
+  // 统计跳过的行（需重新遍历原始行才能准确计数）
+  const idx = parseHeader(rows);
+  for (const row of rows.slice(1)) {
+    const code = row[idx['项目编码']] == null ? '' : String(row[idx['项目编码']]).trim();
+    if (!code) continue;
+    const manager = row[idx['工程管理经理-主']] == null ? '' : String(row[idx['工程管理经理-主']]).trim();
+    if (!personNames.has(manager)) {
+      skippedNoPerson++;
+      continue;
+    }
+    const rawStage = row[idx['项目阶段']] == null ? '' : String(row[idx['项目阶段']]).trim();
+    if (!STAGE_MAP[rawStage]) {
+      skippedStage++;
+    }
+  }
+
+  for (const p of parsed) {
+    const [existing] = await pool.query(
+      'SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = ?',
+      [p.projectCode]
+    );
+    if (!existing.length) {
+      toInsert.push(p);
+      continue;
+    }
+    const hasStageChange = existing[0].stage !== p.stage;
+    const hasFill =
+      (p.approvalDate && !existing[0].approval_date) ||
+      (p.budgetWan != null && existing[0].budget_wan == null);
+    if (hasStageChange) {
+      stageChanges.push({ ...p, from: existing[0].stage, to: p.stage, hasFill });
+    } else if (hasFill) {
+      // 仅有数据补充的，不按阶段变化处理，直接归类为可自动补充（后续 apply 仍会处理）
+      stageChanges.push({ ...p, from: existing[0].stage, to: existing[0].stage, hasFill, onlyFill: true });
+    } else {
+      unchanged++;
+    }
+  }
+
+  return { toInsert, stageChanges, unchanged, skippedNoPerson, skippedStage };
+}
+
+async function applyChanges(pool, toInsert, confirmedUpdates) {
+  const updatedList = [];
+  const insertedList = [];
+
+  for (const p of toInsert) {
+    await pool.query(
+      'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan) VALUES (?, ?, ?, ?, ?, ?)',
+      [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan]
+    );
+    insertedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager });
+  }
+
+  for (const p of confirmedUpdates) {
+    const [existing] = await pool.query(
+      'SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = ?',
+      [p.projectCode]
+    );
+    if (!existing.length) continue;
+    const updates = [];
+    const params = [];
+    if (existing[0].stage !== p.stage) {
+      updates.push('stage = ?');
+      params.push(p.stage);
+    }
+    if (p.approvalDate && !existing[0].approval_date) {
+      updates.push('approval_date = ?');
+      params.push(p.approvalDate);
+    }
+    if (p.budgetWan != null && existing[0].budget_wan == null) {
+      updates.push('budget_wan = ?');
+      params.push(p.budgetWan);
+    }
+    if (updates.length) {
+      await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, p.projectCode]);
+      if (existing[0].stage !== p.stage) {
+        updatedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager, from: existing[0].stage, to: p.stage });
+      }
+    }
+  }
+
+  return { updatedList, insertedList };
+}
+
+router.post('/preview', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '缺少上传文件 file' });
+
+    let rows;
+    try {
+      rows = readRowsFromBuffer(req.file.buffer, req.file.originalname);
+    } catch (e) {
+      return res.status(400).json({ error: e.message.includes('ZIP') ? e.message : 'Excel 解析失败，请确认文件格式' });
+    }
+
+    const pool = getPool();
+    const preview = await buildPreview(pool, rows);
+    res.json(preview);
+  } catch (e) {
+    if (e.message && e.message.includes('Excel 缺少关键列')) {
+      return res.status(400).json({ error: e.message });
+    }
+    res.status(500).json({ error: `预览失败：${e.message}` });
+  }
+});
+
+router.post('/apply', async (req, res) => {
+  try {
+    const { toInsert = [], confirmedUpdates = [] } = req.body || {};
+    const pool = getPool();
+    const { updatedList, insertedList } = await applyChanges(pool, toInsert, confirmedUpdates);
+    res.json({ updated: updatedList.length, inserted: insertedList.length, updatedList, insertedList });
+  } catch (e) {
+    res.status(500).json({ error: `导入失败：${e.message}` });
+  }
+});
+
+// 保留旧的一键导入接口，供非交互场景使用
 router.post('/', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '缺少上传文件 file' });
 
-    let fileBuffer = req.file.buffer;
-    const isUploadedZip = String(req.file.originalname || '').toLowerCase().endsWith('.zip');
-    if (isUploadedZip) {
-      try {
-        fileBuffer = extractXlsxFromZip(fileBuffer);
-      } catch (e) {
-        return res.status(400).json({ error: e.message });
-      }
-    }
-
     let rows;
     try {
-      const wb = xlsx.read(fileBuffer, { type: 'buffer' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      rows = xlsx.utils.sheet_to_json(ws, { header: 1, defval: null });
-    } catch {
-      return res.status(400).json({ error: 'Excel 解析失败，请确认文件格式' });
-    }
-    const header = (rows[0] || []).map((h) => String(h ?? '').trim());
-    const idx = {};
-    for (const name of REQUIRED_COLS) idx[name] = header.indexOf(name);
-    for (const name of OPTIONAL_COLS) idx[name] = header.indexOf(name);
-    const missing = REQUIRED_COLS.filter((n) => idx[n] === -1);
-    if (missing.length) {
-      return res.status(400).json({ error: `Excel 缺少关键列：${missing.join('、')}` });
+      rows = readRowsFromBuffer(req.file.buffer, req.file.originalname);
+    } catch (e) {
+      return res.status(400).json({ error: e.message.includes('ZIP') ? e.message : 'Excel 解析失败，请确认文件格式' });
     }
 
     const pool = getPool();
-    // 人员配置里的姓名集合
-    const [persons] = await pool.query('SELECT name FROM persons');
-    const personNames = new Set(persons.map((p) => p.name));
+    const [personRows] = await pool.query('SELECT name FROM persons');
+    const personNames = new Set(personRows.map((p) => p.name));
+    const parsed = parsePmsRows(rows, personNames);
 
     const stats = {
       updated: 0,
@@ -113,53 +267,45 @@ router.post('/', upload.single('file'), async (req, res) => {
       updatedList: [],
       insertedList: [],
     };
-    // 记录项目编码 → 名称/经理，用于返回明细
-    const projectMeta = new Map();
 
+    // 跳过统计
+    const idx = parseHeader(rows);
     for (const row of rows.slice(1)) {
       const code = row[idx['项目编码']] == null ? '' : String(row[idx['项目编码']]).trim();
       if (!code) continue;
       const manager = row[idx['工程管理经理-主']] == null ? '' : String(row[idx['工程管理经理-主']]).trim();
-      // 只关注人员配置里的人
       if (!personNames.has(manager)) {
         stats.skippedNoPerson++;
         continue;
       }
       const rawStage = row[idx['项目阶段']] == null ? '' : String(row[idx['项目阶段']]).trim();
-      const stage = STAGE_MAP[rawStage];
-      // 映射后不属于 4 个标准阶段的（如立项阶段）：不管
-      if (!stage) {
-        stats.skippedStage++;
-        continue;
-      }
-      const name = row[idx['项目名称']] == null ? '' : String(row[idx['项目名称']]).trim();
-      const approvalDate = idx['第一次立项批复完成时间'] >= 0 ? parsePmsDate(row[idx['第一次立项批复完成时间']]) : null;
-      const budgetWan = idx['第一次立项批复金额'] >= 0 ? parsePmsMoney(row[idx['第一次立项批复金额']]) : null;
-      projectMeta.set(code, { projectName: name, manager });
+      if (!STAGE_MAP[rawStage]) stats.skippedStage++;
+    }
 
+    for (const p of parsed) {
       const [existing] = await pool.query(
         'SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = ?',
-        [code]
+        [p.projectCode]
       );
       if (existing.length) {
         const updates = [];
         const params = [];
-        if (existing[0].stage !== stage) {
+        if (existing[0].stage !== p.stage) {
           updates.push('stage = ?');
-          params.push(stage);
+          params.push(p.stage);
         }
-        if (approvalDate && !existing[0].approval_date) {
+        if (p.approvalDate && !existing[0].approval_date) {
           updates.push('approval_date = ?');
-          params.push(approvalDate);
+          params.push(p.approvalDate);
         }
-        if (budgetWan != null && existing[0].budget_wan == null) {
+        if (p.budgetWan != null && existing[0].budget_wan == null) {
           updates.push('budget_wan = ?');
-          params.push(budgetWan);
+          params.push(p.budgetWan);
         }
         if (updates.length) {
-          await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, code]);
-          if (existing[0].stage !== stage) {
-            stats.updatedList.push({ projectCode: code, projectName: name, manager, from: existing[0].stage, to: stage });
+          await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, p.projectCode]);
+          if (existing[0].stage !== p.stage) {
+            stats.updatedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager, from: existing[0].stage, to: p.stage });
           }
           stats.updated++;
         } else {
@@ -168,15 +314,18 @@ router.post('/', upload.single('file'), async (req, res) => {
       } else {
         await pool.query(
           'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan) VALUES (?, ?, ?, ?, ?, ?)',
-          [code, name, stage, manager, approvalDate, budgetWan]
+          [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan]
         );
         stats.inserted++;
-        stats.insertedList.push({ projectCode: code, projectName: name, manager });
+        stats.insertedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager });
       }
     }
 
     res.json(stats);
   } catch (e) {
+    if (e.message && e.message.includes('Excel 缺少关键列')) {
+      return res.status(400).json({ error: e.message });
+    }
     res.status(500).json({ error: `导入失败：${e.message}` });
   }
 });

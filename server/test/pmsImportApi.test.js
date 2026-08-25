@@ -144,6 +144,87 @@ describe('POST /api/import-pms', () => {
     expect(res.body.error).toContain('ZIP');
   });
 
+  it('preview 返回待新增和阶段变化列表', async () => {
+    const buf = buildPmsBuffer([
+      ['P001', '已有项目甲', '工程实施阶段', '张三', null, null],
+      ['P002', '已有项目乙', '审计归档阶段', '李四', '2025/6/1', '12,000,000'],
+      ['P999', '新项目丙', '工程实施阶段', '张三', '2025-01-01', 8000000],
+      ['P998', '外人项目', '工程实施阶段', '王五', '2025-01-01', 1000000],
+      ['P997', '立项项目', '立项阶段', '张三', '2025-01-01', 1000000],
+    ]);
+    const res = await request(createApp())
+      .post('/api/import-pms/preview')
+      .attach('file', buf, 'pms.xlsx');
+    expect(res.status).toBe(200);
+    expect(res.body.toInsert).toHaveLength(1);
+    expect(res.body.toInsert[0].projectCode).toBe('P999');
+    expect(res.body.stageChanges).toHaveLength(1);
+    expect(res.body.stageChanges[0]).toMatchObject({
+      projectCode: 'P002',
+      projectName: '已有项目乙',
+      manager: '李四',
+      from: '勘察设计阶段',
+      to: '终验归档阶段',
+      hasFill: true,
+    });
+    expect(res.body.unchanged).toBe(1);
+    expect(res.body.skippedNoPerson).toBe(1);
+    expect(res.body.skippedStage).toBe(1);
+  });
+
+  it('apply 只更新用户确认的阶段变化；未确认的不更新', async () => {
+    const app = createApp();
+    const preview = await request(app)
+      .post('/api/import-pms/preview')
+      .attach(
+        'file',
+        buildPmsBuffer([
+          ['P001', '已有项目甲', '工程实施阶段', '张三', null, null],
+          ['P002', '已有项目乙', '审计归档阶段', '李四', '2025/6/1', '12,000,000'],
+          ['P999', '新项目丙', '工程实施阶段', '张三', '2025-01-01', 8000000],
+        ]),
+        'pms.xlsx'
+      );
+
+    // 只确认 P002 的阶段变化，P001 不变更
+    const apply = await request(app)
+      .post('/api/import-pms/apply')
+      .send({
+        toInsert: preview.body.toInsert,
+        confirmedUpdates: preview.body.stageChanges.filter((u) => u.projectCode === 'P002'),
+      });
+    expect(apply.status).toBe(200);
+    expect(apply.body.updated).toBe(1);
+    expect(apply.body.inserted).toBe(1);
+
+    const pool = getPool();
+    const [p1] = await pool.query("SELECT stage FROM projects WHERE project_code = 'P001'");
+    expect(p1[0].stage).toBe('项目实施阶段');
+    const [p2] = await pool.query("SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = 'P002'");
+    expect(p2[0].stage).toBe('终验归档阶段');
+    expect(p2[0].approval_date).toBe('2025-06-01');
+    expect(Number(p2[0].budget_wan)).toBe(1200);
+  });
+
+  it('preview 对缺失日期/金额但阶段不变的项目标记 onlyFill', async () => {
+    const pool = getPool();
+    await pool.query(
+      "INSERT INTO projects (project_code, project_name, stage, owner) VALUES ('P003', '已有项目丙', '项目实施阶段', '张三')"
+    );
+    const res = await request(createApp())
+      .post('/api/import-pms/preview')
+      .attach(
+        'file',
+        buildPmsBuffer([['P003', '已有项目丙', '工程实施阶段', '张三', '2025-03-01', 5000000]]),
+        'pms.xlsx'
+      );
+    expect(res.status).toBe(200);
+    expect(res.body.stageChanges).toHaveLength(1);
+    expect(res.body.stageChanges[0].onlyFill).toBe(true);
+    expect(res.body.stageChanges[0].hasFill).toBe(true);
+    expect(res.body.unchanged).toBe(0);
+  });
+
   it('缺文件 400；缺关键列 400', async () => {
     const app = createApp();
     const noFile = await request(app).post('/api/import-pms');
