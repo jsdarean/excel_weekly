@@ -30,18 +30,25 @@
     </div>
 
     <!-- 分类卡片 -->
-    <div v-for="card in cards" :key="card.category" class="card cat-card">
-      <h3 class="cat-title">
-        {{ card.category }}
-        <span class="cat-stats num">
-          （{{ card.total }}个项目，占比{{ card.pct }}%，立项总金额{{ card.budgetYi }}亿元）
-        </span>
-      </h3>
+    <div
+      v-for="card in cards"
+      :key="card.category"
+      class="card cat-card"
+      :class="`category-${card.category}`"
+    >
+      <div class="cat-title-bar" :class="`category-${card.category}`">
+        <h3 class="cat-title">
+          {{ card.category }}
+          <span class="cat-stats num">
+            （{{ card.total }}个项目，占比{{ card.pct }}%，立项总金额{{ card.budgetYi }}亿元）
+          </span>
+        </h3>
+      </div>
 
       <div v-for="(p, pi) in card.projects" :key="p.project_code">
           <hr v-if="pi > 0" class="proj-sep" />
           <div class="proj">
-            <div class="proj-head">
+            <div class="proj-head" :class="`category-${card.category}`">
               <span class="num proj-code">{{ p.project_code }}</span>
               <router-link class="proj-name" :to="`/projects/${encodeURIComponent(p.project_code)}`">{{ p.project_name }}</router-link>
               <button class="unwatch" @click="unwatch(p.project_code)">取消关注</button>
@@ -266,15 +273,54 @@ onMounted(async () => {
 .candidate:hover { background: var(--canvas-soft); }
 .cand-cat { margin-left: auto; color: var(--ink-mute); font-size: 13px; }
 
-.cat-card { margin-bottom: 24px; }
-.cat-title { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
-.cat-stats { font-size: 13px; color: var(--ink-mute); font-weight: 300; letter-spacing: 0; }
+.cat-card {
+  margin-bottom: 24px;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.cat-card.category-收入相关 { background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); }
+.cat-card.category-基础能力 { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); }
+.cat-card.category-支撑后端 { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); }
+.cat-card.category-拟取消 { background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); }
+
+.cat-title-bar {
+  padding: 14px 20px;
+  margin: -1px -1px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+}
+.cat-title-bar.category-收入相关 { background: linear-gradient(90deg, #0284c7, #0ea5e9); }
+.cat-title-bar.category-基础能力 { background: linear-gradient(90deg, #16a34a, #22c55e); }
+.cat-title-bar.category-支撑后端 { background: linear-gradient(90deg, #d97706, #f59e0b); }
+.cat-title-bar.category-拟取消 { background: linear-gradient(90deg, #6b7280, #9ca3af); }
+
+.cat-title { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin: 0; color: #fff; }
+.cat-title-bar.category-拟取消 .cat-title { color: #fff; }
+.cat-stats { font-size: 13px; color: rgba(255, 255, 255, 0.9); font-weight: 300; letter-spacing: 0; }
 .empty { color: var(--ink-mute); font-size: 14px; }
 
-.proj-sep { border: none; border-top: 1px dashed var(--hairline); margin: 20px 0; }
-.proj-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.proj-code { font-size: 13px; color: var(--ink-mute); }
-.proj-name { font-size: 16px; color: var(--ink); text-decoration: none; font-weight: 400; }
+.proj {
+  padding: 0 20px 20px;
+}
+.proj-sep { border: none; border-top: 1px dashed rgba(0, 0, 0, 0.1); margin: 0 0 20px; }
+.proj-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.65);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(4px);
+}
+.proj-head.category-收入相关 { border-left: 4px solid #0284c7; }
+.proj-head.category-基础能力 { border-left: 4px solid #16a34a; }
+.proj-head.category-支撑后端 { border-left: 4px solid #d97706; }
+.proj-head.category-拟取消 { border-left: 4px solid #6b7280; }
+.proj-code { font-size: 13px; color: var(--ink-mute); font-weight: 500; }
+.proj-name { font-size: 16px; color: var(--ink); text-decoration: none; font-weight: 500; }
 .proj-name:hover { color: var(--primary); }
 .unwatch { margin-left: auto; font-size: 12px; padding: 4px 12px; }
 
