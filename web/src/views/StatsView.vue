@@ -58,14 +58,30 @@
               v-for="d in byDemandPrev"
               :key="d.dept"
               class="demand-row"
+              @mouseleave="hideDemandTooltip"
             >
               <span class="demand-label" :title="d.dept">{{ d.dept }}</span>
-              <div class="demand-bar-track">
+              <div class="demand-bar-track" @mousemove="onDemandMouseMove($event, d, 'prev')">
                 <div
                   v-if="d.count > 0"
                   class="demand-bar prev"
                   :style="{ width: demandYearBarWidth(d.count, 'prev') }"
                 ></div>
+                <div
+                  v-if="tooltipPos.show && tooltipPos.dept === d.dept && tooltipPos.year === 'prev'"
+                  class="demand-tooltip"
+                  :style="{ left: tooltipPos.x + 'px', top: tooltipPos.y + 'px' }"
+                >
+                  <div class="tooltip-title">{{ d.dept }}</div>
+                  <div
+                    v-for="r in d.rooms"
+                    :key="r.room"
+                    class="tooltip-row"
+                  >
+                    <span>{{ r.room }}</span>
+                    <span class="num">{{ r.count }}</span>
+                  </div>
+                </div>
               </div>
               <span class="demand-count-col num">{{ d.count }}</span>
             </div>
@@ -76,14 +92,30 @@
               v-for="d in byDemandCurr"
               :key="d.dept"
               class="demand-row"
+              @mouseleave="hideDemandTooltip"
             >
               <span class="demand-label" :title="d.dept">{{ d.dept }}</span>
-              <div class="demand-bar-track">
+              <div class="demand-bar-track" @mousemove="onDemandMouseMove($event, d, 'curr')">
                 <div
                   v-if="d.count > 0"
                   class="demand-bar curr"
                   :style="{ width: demandYearBarWidth(d.count, 'curr') }"
                 ></div>
+                <div
+                  v-if="tooltipPos.show && tooltipPos.dept === d.dept && tooltipPos.year === 'curr'"
+                  class="demand-tooltip"
+                  :style="{ left: tooltipPos.x + 'px', top: tooltipPos.y + 'px' }"
+                >
+                  <div class="tooltip-title">{{ d.dept }}</div>
+                  <div
+                    v-for="r in d.rooms"
+                    :key="r.room"
+                    class="tooltip-row"
+                  >
+                    <span>{{ r.room }}</span>
+                    <span class="num">{{ r.count }}</span>
+                  </div>
+                </div>
               </div>
               <span class="demand-count-col num">{{ d.count }}</span>
             </div>
@@ -243,18 +275,27 @@ function fmtWan(v) {
   return Number.isFinite(n) ? String(Math.round(n)) : '';
 }
 
+// 需求部门 tooltip 跟随鼠标（按年份分别展示 rooms）
+const tooltipPos = ref({ x: 0, y: 0, show: false, dept: '', year: '' });
+function onDemandMouseMove(e, d, year) {
+  tooltipPos.value = { x: e.clientX + 12, y: e.clientY - 10, show: true, dept: d.dept, year };
+}
+function hideDemandTooltip() {
+  tooltipPos.value.show = false;
+}
+
 // 需求部门统计：近两年分别排序，各自归一化
 const byDemandPrev = computed(() => {
   if (!stats.value) return [];
   return stats.value.byDemandDept
-    .map((d) => ({ dept: d.dept, count: d.prev }))
+    .map((d) => ({ dept: d.dept, count: d.prev, rooms: d.prevRooms }))
     .filter((d) => d.count > 0)
     .sort((a, b) => b.count - a.count || a.dept.localeCompare(b.dept, 'zh'));
 });
 const byDemandCurr = computed(() => {
   if (!stats.value) return [];
   return stats.value.byDemandDept
-    .map((d) => ({ dept: d.dept, count: d.curr }))
+    .map((d) => ({ dept: d.dept, count: d.curr, rooms: d.currRooms }))
     .filter((d) => d.count > 0)
     .sort((a, b) => b.count - a.count || a.dept.localeCompare(b.dept, 'zh'));
 });
@@ -500,10 +541,11 @@ onMounted(async () => {
 }
 .demand-bar-track {
   flex: 1;
+  position: relative;
   height: 16px;
   background: var(--canvas-soft);
   border-radius: 0 4px 4px 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .demand-bar {
   height: 100%;
@@ -525,4 +567,18 @@ onMounted(async () => {
   font-size: 14px;
   color: var(--ink);
 }
+.demand-tooltip {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  min-width: 140px;
+  z-index: 1000;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tooltip-title { font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 2px; }
+.tooltip-row { display: flex; justify-content: space-between; gap: 16px; }
 </style>

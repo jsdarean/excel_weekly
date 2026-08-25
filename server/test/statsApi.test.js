@@ -70,10 +70,10 @@ describe('GET /api/stats', () => {
       { month: '2026-01', count: 1, budget: '0.00' },
     ]);
 
-    // 需求部门统计：按 / 拆分，按近两年（去年、今年）分列，按总数降序
+    // 需求部门统计：按 / 拆分，按近两年（去年、今年）分列，按总数降序，rooms 按数量降序
     expect(res.body.byDemandDept).toEqual([
-      { dept: 'A部门', prev: 2, curr: 1, total: 3 },
-      { dept: 'B部门', prev: 2, curr: 0, total: 2 },
+      { dept: 'A部门', prev: 2, curr: 1, total: 3, prevRooms: [{ room: '未填写', count: 2 }], currRooms: [{ room: '未填写', count: 1 }] },
+      { dept: 'B部门', prev: 2, curr: 0, total: 2, prevRooms: [{ room: '未填写', count: 2 }], currRooms: [] },
     ]);
   });
 

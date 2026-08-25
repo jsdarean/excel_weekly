@@ -89,9 +89,9 @@ router.get('/stats', async (req, res) => {
     );
     const byMonth = monthRows.map((r) => ({ month: r.ym, count: r.n, budget: String(r.budget) }));
 
-    // 需求部门统计：近 2 年，按 / 拆分需求部门，按项目总数降序
+    // 需求部门统计：近 2 年，按 / 拆分需求部门与需求室（一一对应），按项目总数降序
     const [demandRows] = await pool.query(
-      `SELECT YEAR(approval_date) AS yr, demand_dept
+      `SELECT YEAR(approval_date) AS yr, demand_dept, demand_room
        FROM projects WHERE approval_date IS NOT NULL`
     );
     const dmap = new Map();
@@ -101,15 +101,43 @@ router.get('/stats', async (req, res) => {
       const depts = r.demand_dept
         ? String(r.demand_dept).split('/').map((s) => s.trim()).filter(Boolean)
         : ['未填写'];
-      for (const d of depts) {
-        if (!dmap.has(d)) dmap.set(d, { dept: d, prev: 0, curr: 0, total: 0 });
+      const rooms = r.demand_room
+        ? String(r.demand_room).split('/').map((s) => s.trim()).filter(Boolean)
+        : ['未填写'];
+      for (let i = 0; i < depts.length; i++) {
+        const d = depts[i];
+        const room = rooms[i] || '未填写';
+        if (!dmap.has(d)) {
+          dmap.set(d, {
+            dept: d,
+            prev: 0,
+            curr: 0,
+            total: 0,
+            prevRooms: new Map(),
+            currRooms: new Map(),
+          });
+        }
         const entry = dmap.get(d);
+        const roomMap = yr === prevYear ? entry.prevRooms : entry.currRooms;
         if (yr === prevYear) entry.prev++;
         else entry.curr++;
         entry.total++;
+        roomMap.set(room, (roomMap.get(room) || 0) + 1);
       }
     }
+    const sortRooms = (map) =>
+      [...map.entries()]
+        .map(([room, count]) => ({ room, count }))
+        .sort((a, b) => b.count - a.count || a.room.localeCompare(b.room, 'zh'));
     const byDemandDept = [...dmap.values()]
+      .map((d) => ({
+        dept: d.dept,
+        prev: d.prev,
+        curr: d.curr,
+        total: d.total,
+        prevRooms: sortRooms(d.prevRooms),
+        currRooms: sortRooms(d.currRooms),
+      }))
       .sort((a, b) => b.total - a.total || a.dept.localeCompare(b.dept, 'zh'));
 
     res.json({
