@@ -177,9 +177,9 @@ export async function exportReports(rows, reportDate) {
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const dateStr = String(reportDate).replace(/-/g, '');
+  const dateStr = String(nextFriday(reportDate)).replace(/-/g, '');
   a.href = url;
-  a.download = `核心网室项目每周进展${dateStr}.xlsx`;
+  a.download = `核心网室项目每周进展${dateStr}（云文档）.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }
