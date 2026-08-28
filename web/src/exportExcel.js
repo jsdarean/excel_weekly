@@ -74,7 +74,8 @@ export function buildAttachmentData(rows, reportDate) {
     toNum(r.budget_wan),
     toStr(r.stage),
     toStr(r.content),
-    toStr(r.progress),
+    // 周进展中的"本周"二字删除后再导出
+    toStr(r.progress).replaceAll('本周', ''),
     toNum(r.purchase_rate),
     toStr(r.disclosure),
     toNum(r.arrival_rate),
@@ -94,7 +95,7 @@ const DATA_FONT = { name: '宋体', size: 10 };
 const THIN = { style: 'thin' };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 const HEADER_HEIGHT = 43.5;
-const DATA_ROW_HEIGHT = 38;
+const DATA_ROW_HEIGHT = 80;
 
 // 列宽（A-Q，参考文件实测）
 const COL_WIDTHS = [3.86, 9.6, 15.73, 30.07, 12.2, 10.46, 8.2, 9.33, 16.2,
@@ -153,7 +154,7 @@ export function buildWorkbook(rows, reportDate) {
   aoa.forEach((rowData, rIdx) => {
     const row = ws.addRow(rowData);
     const isHeader = rIdx === 0;
-    // 表头固定行高；数据行统一高度 38
+    // 表头固定行高；数据行统一高度 80
     row.height = isHeader ? HEADER_HEIGHT : DATA_ROW_HEIGHT;
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       cell.border = BORDER;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildExportData, buildWorkbook, nextFriday } from './exportExcel.js';
+import { buildExportData, buildWorkbook, buildAttachmentData, buildAttachmentWorkbook, nextFriday } from './exportExcel.js';
 
 describe('nextFriday', () => {
   it('返回下一周周五（当前周五 +7 天）', () => {
@@ -31,7 +31,7 @@ describe('buildExportData', () => {
     expect(header[0]).toBe('序号');
     expect(header[10]).toBe('周进展(2026-08-21)');
     expect(header[11]).toBe('周进展(2026-08-28)');
-    expect(header).toHaveLength(17);
+    expect(header).toHaveLength(20);
   });
 
   it('序号从 1 递增，下周进展列为空，金额/完成率转数字', () => {
@@ -61,7 +61,7 @@ describe('buildExportData', () => {
     const h1 = ws.getCell('A1');
     expect(h1.font).toMatchObject({ name: '宋体', size: 10, bold: true, color: { argb: 'FFFFFFFF' } });
     expect(h1.fill).toMatchObject({ pattern: 'solid', fgColor: { argb: 'FF00B0F0' } });
-    expect(h1.alignment).toMatchObject({ horizontal: 'center', vertical: 'center', wrapText: true });
+    expect(h1.alignment).toMatchObject({ horizontal: 'center', vertical: 'middle', wrapText: true });
     expect(h1.border.top.style).toBe('thin');
 
     // 列宽复刻（A=3.86，D=30.07，K/L=22.33）
@@ -70,16 +70,39 @@ describe('buildExportData', () => {
     expect(ws.getColumn(11).width).toBeCloseTo(22.33);
     expect(ws.getColumn(12).width).toBeCloseTo(22.33);
 
-    // 数据行：宋体 10、行高自动（不设固定值，换行内容完整显示）、细边框；M/Q 列 Arial
+    // 数据行：宋体 10、行高统一 80、细边框
     const d = ws.getRow(2);
-    expect(d.height).toBeUndefined();
+    expect(d.height).toBe(80);
     expect(ws.getCell('B2').font).toMatchObject({ name: '宋体', size: 10 });
-    expect(ws.getCell('M2').font).toMatchObject({ name: 'Arial', size: 10 });
+    expect(ws.getCell('M2').font).toMatchObject({ name: '宋体', size: 10 });
     expect(ws.getCell('B2').border.bottom.style).toBe('thin');
 
     // 完成率列百分比格式
     expect(ws.getCell('M2').numFmt).toBe('0%');
     expect(ws.getCell('O2').numFmt).toBe('0%');
     expect(ws.getCell('M2').value).toBe(0.85);
+  });
+
+  it('附件下载工作簿：表头行高 43.5，数据行行高统一 80', () => {
+    const wb = buildAttachmentWorkbook(rows, '2026-08-21');
+    const ws = wb.worksheets[0];
+    expect(ws.getRow(1).height).toBe(43.5);
+    expect(ws.getRow(2).height).toBe(80);
+    expect(ws.getRow(3).height).toBe(80);
+  });
+
+  it('附件下载数据：周进展列删除所有"本周"二字，其余列不受影响', () => {
+    const special = [
+      { project_code: 'P1', progress: '本周完成设备到货' },
+      { project_code: 'P2', progress: '本周完成A，本周完成B' },
+      { project_code: 'P3', progress: '设备已到货' },
+      { project_code: 'P4', progress: null },
+    ];
+    const data = buildAttachmentData(special, '2026-08-21');
+    // 周进展为数据列索引 10
+    expect(data[1][10]).toBe('完成设备到货');
+    expect(data[2][10]).toBe('完成A，完成B');
+    expect(data[3][10]).toBe('设备已到货');
+    expect(data[4][10]).toBe('');
   });
 });
