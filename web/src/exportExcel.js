@@ -94,6 +94,7 @@ const DATA_FONT = { name: '宋体', size: 10 };
 const THIN = { style: 'thin' };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 const HEADER_HEIGHT = 43.5;
+const DATA_ROW_HEIGHT = 38;
 
 // 列宽（A-Q，参考文件实测）
 const COL_WIDTHS = [3.86, 9.6, 15.73, 30.07, 12.2, 10.46, 8.2, 9.33, 16.2,
@@ -152,8 +153,8 @@ export function buildWorkbook(rows, reportDate) {
   aoa.forEach((rowData, rIdx) => {
     const row = ws.addRow(rowData);
     const isHeader = rIdx === 0;
-    // 表头固定行高；数据行不设高度，由 Excel 按换行内容自动撑高（固定行高会裁掉多行文本）
-    if (isHeader) row.height = HEADER_HEIGHT;
+    // 表头固定行高；数据行统一高度 38
+    row.height = isHeader ? HEADER_HEIGHT : DATA_ROW_HEIGHT;
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       cell.border = BORDER;
       cell.font = isHeader ? HEADER_FONT : DATA_FONT;
@@ -194,7 +195,7 @@ export function buildAttachmentWorkbook(rows, reportDate) {
   aoa.forEach((rowData, rIdx) => {
     const row = ws.addRow(rowData);
     const isHeader = rIdx === 0;
-    if (isHeader) row.height = HEADER_HEIGHT;
+    row.height = isHeader ? HEADER_HEIGHT : DATA_ROW_HEIGHT;
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       cell.border = BORDER;
       cell.font = isHeader ? HEADER_FONT : DATA_FONT;
