@@ -53,6 +53,16 @@ export const api = {
       body: JSON.stringify(body),
     }),
   searchProjects: (keyword) => request(`/api/reports${buildQuery({ keyword })}`),
+  pinProject: (code) =>
+    request(`/api/projects/${encodeURIComponent(code)}/pin`, { method: 'PUT' }),
+  unpinProject: (code) =>
+    request(`/api/projects/${encodeURIComponent(code)}/pin`, { method: 'DELETE' }),
+  movePin: (code, direction) =>
+    request(`/api/projects/${encodeURIComponent(code)}/pin/move`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    }),
   getWatched: () => request('/api/watched'),
   addWatched: (code) =>
     request('/api/watched', {

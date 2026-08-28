@@ -105,3 +105,100 @@ describe('PUT /api/projects/:code', () => {
     expect(missing.status).toBe(404);
   });
 });
+
+describe('项目置顶 API', () => {
+  beforeEach(async () => {
+    await resetDb();
+    await seed();
+  });
+
+  it('置顶：pin_order 从 1 递增；重复置顶 409；项目不存在 404', async () => {
+    const r1 = await request(createApp()).put('/api/projects/P001/pin');
+    expect(r1.status).toBe(200);
+    const r2 = await request(createApp()).put('/api/projects/P002/pin');
+    expect(r2.status).toBe(200);
+    const [rows] = await getPool().query(
+      "SELECT project_code, pin_order FROM projects ORDER BY pin_order"
+    );
+    expect(rows[0]).toMatchObject({ project_code: 'P001', pin_order: 1 });
+    expect(rows[1]).toMatchObject({ project_code: 'P002', pin_order: 2 });
+
+    const dup = await request(createApp()).put('/api/projects/P001/pin');
+    expect(dup.status).toBe(409);
+    const missing = await request(createApp()).put('/api/projects/NOPE/pin');
+    expect(missing.status).toBe(404);
+  });
+
+  it('取消置顶：pin_order 置空；未置顶或不存在返回 404', async () => {
+    await request(createApp()).put('/api/projects/P001/pin');
+    const res = await request(createApp()).delete('/api/projects/P001/pin');
+    expect(res.status).toBe(204);
+    const [rows] = await getPool().query(
+      "SELECT pin_order FROM projects WHERE project_code = 'P001'"
+    );
+    expect(rows[0].pin_order).toBeNull();
+
+    const again = await request(createApp()).delete('/api/projects/P001/pin');
+    expect(again.status).toBe(404);
+    const missing = await request(createApp()).delete('/api/projects/NOPE/pin');
+    expect(missing.status).toBe(404);
+  });
+
+  it('move：与相邻置顶项目交换顺序；到边界不变；未置顶/非法 direction 返回 400', async () => {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO projects (project_code, project_name, category) VALUES ('P003', '项目丙', '收入相关')`
+    );
+    await request(createApp()).put('/api/projects/P001/pin');
+    await request(createApp()).put('/api/projects/P002/pin');
+    await request(createApp()).put('/api/projects/P003/pin');
+    // 当前：P001=1, P002=2, P003=3
+
+    // P003 上移 → P001=1, P003=2, P002=3
+    const up = await request(createApp())
+      .put('/api/projects/P003/pin/move')
+      .send({ direction: 'up' });
+    expect(up.status).toBe(200);
+    let [rows] = await pool.query(
+      'SELECT project_code, pin_order FROM projects WHERE pin_order IS NOT NULL ORDER BY pin_order'
+    );
+    expect(rows.map((r) => r.project_code)).toEqual(['P001', 'P003', 'P002']);
+
+    // P001 下移 → P003=1... 实际交换 P001(1) 与 P003(2)
+    const down = await request(createApp())
+      .put('/api/projects/P001/pin/move')
+      .send({ direction: 'down' });
+    expect(down.status).toBe(200);
+    [rows] = await pool.query(
+      'SELECT project_code, pin_order FROM projects WHERE pin_order IS NOT NULL ORDER BY pin_order'
+    );
+    expect(rows.map((r) => r.project_code)).toEqual(['P003', 'P001', 'P002']);
+
+    // 顶部再上移：不变
+    const top = await request(createApp())
+      .put('/api/projects/P003/pin/move')
+      .send({ direction: 'up' });
+    expect(top.status).toBe(200);
+    [rows] = await pool.query(
+      'SELECT project_code, pin_order FROM projects WHERE pin_order IS NOT NULL ORDER BY pin_order'
+    );
+    expect(rows.map((r) => r.project_code)).toEqual(['P003', 'P001', 'P002']);
+
+    // 未置顶项目 move → 400
+    await request(createApp()).delete('/api/projects/P002/pin');
+    const unpinned = await request(createApp())
+      .put('/api/projects/P002/pin/move')
+      .send({ direction: 'up' });
+    expect(unpinned.status).toBe(400);
+    // 非法 direction → 400
+    const badDir = await request(createApp())
+      .put('/api/projects/P001/pin/move')
+      .send({ direction: 'left' });
+    expect(badDir.status).toBe(400);
+    // 项目不存在 → 404
+    const missing = await request(createApp())
+      .put('/api/projects/NOPE/pin/move')
+      .send({ direction: 'up' });
+    expect(missing.status).toBe(404);
+  });
+});

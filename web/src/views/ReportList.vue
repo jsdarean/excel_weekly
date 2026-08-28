@@ -75,9 +75,21 @@
             <td class="nowrap sticky" :style="{ left: '0px' }">{{ r.category_major }}</td>
             <td class="nowrap sticky num" :style="{ left: lefts.code }">{{ r.project_code }}</td>
             <td class="sticky last-frozen" :style="[{ left: lefts.name }, nameColStyle]">
-              <router-link class="proj-link" :to="`/projects/${encodeURIComponent(r.project_code)}`">
-                <span class="clip" @mouseenter="showTip($event, r.project_name)" @mouseleave="hideTip">{{ r.project_name }}</span>
-              </router-link>
+              <div class="name-cell">
+                <button
+                  class="pin-btn"
+                  :class="{ pinned: r.pin_order !== null }"
+                  :title="r.pin_order !== null ? '取消置顶' : '置顶（领导关注，排在最前）'"
+                  @click="togglePin(r)"
+                >{{ r.pin_order !== null ? '★' : '☆' }}</button>
+                <template v-if="r.pin_order !== null">
+                  <button class="pin-move" title="上移" @click="movePin(r, 'up')">↑</button>
+                  <button class="pin-move" title="下移" @click="movePin(r, 'down')">↓</button>
+                </template>
+                <router-link class="proj-link" :to="`/projects/${encodeURIComponent(r.project_code)}`">
+                  <span class="clip" @mouseenter="showTip($event, r.project_name)" @mouseleave="hideTip">{{ r.project_name }}</span>
+                </router-link>
+              </div>
             </td>
             <td class="nowrap num">{{ r.approval_date }}</td>
             <td class="nowrap">{{ r.category }}</td>
@@ -126,6 +138,31 @@ async function onExport() {
     await exportReports(rows.value, reportDate.value);
   } catch (e) {
     error.value = `导出失败：${e.message}`;
+  }
+}
+
+// 置顶 / 取消置顶 / 调整置顶顺序（置顶项目排在列表及导出最前）
+async function togglePin(r) {
+  error.value = '';
+  try {
+    if (r.pin_order !== null && r.pin_order !== undefined) {
+      await api.unpinProject(r.project_code);
+    } else {
+      await api.pinProject(r.project_code);
+    }
+    await load();
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+
+async function movePin(r, direction) {
+  error.value = '';
+  try {
+    await api.movePin(r.project_code, direction);
+    await load();
+  } catch (e) {
+    error.value = e.message;
   }
 }
 
@@ -318,4 +355,23 @@ tbody tr:hover td.sticky { background: var(--canvas-soft); }
 /* 项目名称链接 */
 .proj-link { text-decoration: none; color: var(--ink); }
 .proj-link:hover { color: var(--primary); }
+
+/* 置顶按钮与调序按钮（项目名称单元格内） */
+.name-cell { display: flex; align-items: center; gap: 2px; }
+.name-cell .proj-link { flex: 1; min-width: 0; }
+.pin-btn,
+.pin-move {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-secondary);
+  opacity: 0.5;
+}
+.pin-btn:hover,
+.pin-move:hover { opacity: 1; color: var(--primary); }
+.pin-btn.pinned { color: #f0a020; opacity: 1; }
+.pin-move { font-size: 12px; }
 </style>

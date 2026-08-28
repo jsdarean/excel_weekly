@@ -38,13 +38,15 @@ router.get('/reports', async (req, res) => {
       `SELECT p.id, p.project_code, p.category_major, p.project_name,
               p.approval_date, p.category, p.owner, p.budget_wan, p.stage,
               p.content, p.demand_dept, p.demand_room, p.demand_owner,
+              p.pin_order,
               w.report_date, w.progress, w.purchase_rate, w.disclosure,
               w.arrival_rate, w.online_handover, w.final_acceptance
        FROM projects p
        LEFT JOIN weekly_progress w
          ON w.project_code = p.project_code AND w.report_date = ?
        ${where}
-       ORDER BY FIELD(p.category, '收入相关', '基础能力', '支撑后端', '拟取消') = 0,
+       ORDER BY p.pin_order IS NULL, p.pin_order,
+                FIELD(p.category, '收入相关', '基础能力', '支撑后端', '拟取消') = 0,
                 FIELD(p.category, '收入相关', '基础能力', '支撑后端', '拟取消'),
                 p.approval_date IS NULL, p.approval_date DESC,
                 p.project_code`,

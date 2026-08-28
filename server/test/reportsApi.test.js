@@ -118,6 +118,20 @@ describe('GET /api/reports', () => {
       'S5', 'S2', 'S4', 'P001', 'S1', 'P002', 'S3',
     ]);
   });
+
+  it('置顶项目（pin_order）排在最前并按 pin_order 升序，其余按现有规则', async () => {
+    const pool = getPool();
+    // 无置顶时：P001（基础能力）在 P002（支撑后端）前
+    const before = await request(createApp()).get('/api/reports');
+    expect(before.body.rows.map((r) => r.project_code)).toEqual(['P001', 'P002']);
+    // 置顶 P002=1、P001=2 后顺序反转，且返回 pin_order 字段
+    await pool.query("UPDATE projects SET pin_order = 2 WHERE project_code = 'P001'");
+    await pool.query("UPDATE projects SET pin_order = 1 WHERE project_code = 'P002'");
+    const res = await request(createApp()).get('/api/reports');
+    expect(res.body.rows.map((r) => r.project_code)).toEqual(['P002', 'P001']);
+    expect(res.body.rows[0].pin_order).toBe(1);
+    expect(res.body.rows[1].pin_order).toBe(2);
+  });
 });
 
 describe('GET /api/report-dates 和 /api/filters', () => {

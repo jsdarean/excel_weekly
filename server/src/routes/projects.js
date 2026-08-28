@@ -59,4 +59,87 @@ router.put('/projects/:code', async (req, res) => {
   }
 });
 
+// 置顶：pin_order = 当前最大值 + 1（新置顶排在置顶组末尾）
+router.put('/projects/:code/pin', async (req, res) => {
+  try {
+    const pool = getPool();
+    const [cur] = await pool.query(
+      'SELECT pin_order FROM projects WHERE project_code = ?',
+      [req.params.code]
+    );
+    if (!cur.length) return res.status(404).json({ error: '项目不存在' });
+    if (cur[0].pin_order !== null) return res.status(409).json({ error: '该项目已置顶' });
+    const [[m]] = await pool.query(
+      'SELECT COALESCE(MAX(pin_order), 0) + 1 AS n FROM projects'
+    );
+    await pool.query('UPDATE projects SET pin_order = ? WHERE project_code = ?', [
+      m.n, req.params.code,
+    ]);
+    res.json({ ok: true, pin_order: m.n });
+  } catch (e) {
+    res.status(500).json({ error: `操作失败：${e.message}` });
+  }
+});
+
+// 取消置顶
+router.delete('/projects/:code/pin', async (req, res) => {
+  try {
+    const pool = getPool();
+    const [cur] = await pool.query(
+      'SELECT pin_order FROM projects WHERE project_code = ?',
+      [req.params.code]
+    );
+    if (!cur.length) return res.status(404).json({ error: '项目不存在' });
+    if (cur[0].pin_order === null) return res.status(404).json({ error: '该项目未置顶' });
+    await pool.query(
+      'UPDATE projects SET pin_order = NULL WHERE project_code = ?',
+      [req.params.code]
+    );
+    res.status(204).end();
+  } catch (e) {
+    res.status(500).json({ error: `操作失败：${e.message}` });
+  }
+});
+
+// 调整置顶顺序：与相邻的置顶项目交换 pin_order；到边界则不变
+router.put('/projects/:code/pin/move', async (req, res) => {
+  try {
+    const dir = req.body?.direction;
+    if (dir !== 'up' && dir !== 'down') {
+      return res.status(400).json({ error: "direction 必须是 'up' 或 'down'" });
+    }
+    const pool = getPool();
+    const [cur] = await pool.query(
+      'SELECT pin_order FROM projects WHERE project_code = ?',
+      [req.params.code]
+    );
+    if (!cur.length) return res.status(404).json({ error: '项目不存在' });
+    const myOrder = cur[0].pin_order;
+    if (myOrder === null) return res.status(400).json({ error: '该项目未置顶' });
+    const [nb] = dir === 'up'
+      ? await pool.query(
+          `SELECT project_code, pin_order FROM projects
+           WHERE pin_order IS NOT NULL AND pin_order < ?
+           ORDER BY pin_order DESC LIMIT 1`,
+          [myOrder]
+        )
+      : await pool.query(
+          `SELECT project_code, pin_order FROM projects
+           WHERE pin_order IS NOT NULL AND pin_order > ?
+           ORDER BY pin_order LIMIT 1`,
+          [myOrder]
+        );
+    if (!nb.length) return res.json({ ok: true }); // 已在边界，顺序不变
+    await pool.query('UPDATE projects SET pin_order = ? WHERE project_code = ?', [
+      nb[0].pin_order, req.params.code,
+    ]);
+    await pool.query('UPDATE projects SET pin_order = ? WHERE project_code = ?', [
+      myOrder, nb[0].project_code,
+    ]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: `操作失败：${e.message}` });
+  }
+});
+
 export default router;

@@ -53,6 +53,14 @@ export async function initDatabase() {
       await p.query(`ALTER TABLE projects ADD COLUMN ${col} VARCHAR(128)`);
     }
   }
+  // 兼容旧表：置顶顺序列（NULL = 不置顶，数字越小排越前）
+  const [pinCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = 'pin_order'`
+  );
+  if (pinCol.length === 0) {
+    await p.query('ALTER TABLE projects ADD COLUMN pin_order INT NULL');
+  }
   await p.query(`CREATE TABLE IF NOT EXISTS weekly_progress (
     id INT AUTO_INCREMENT PRIMARY KEY,
     project_code VARCHAR(64) NOT NULL,
