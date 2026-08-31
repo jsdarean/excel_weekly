@@ -10,9 +10,10 @@ describe('renderTemplate', () => {
     total: 233,
     cancelled: 3,
     categories: {
-      '收入相关': { count: 24, pct: 10.3, budgetYi: '7.24', highlights: '1、项目甲，进展一。\n2、项目乙，进展二。' },
-      '基础能力': { count: 87, pct: 37.3, budgetYi: '13.08', highlights: '（无）' },
-      '支撑后端': { count: 119, pct: 51.1, budgetYi: '13.95', highlights: '（无）' },
+      '收入相关': { count: 24, pct: 10.3, budgetYi: '7.24', highlights: '1、项目甲，进展一。\n2、项目乙，进展二。',
+        stageCounts: { '项目实施阶段': 10, '勘察设计阶段': 14 } },
+      '基础能力': { count: 87, pct: 37.3, budgetYi: '13.08', highlights: '（无）', stageCounts: {} },
+      '支撑后端': { count: 119, pct: 51.1, budgetYi: '13.95', highlights: '（无）', stageCounts: {} },
     },
   };
 
@@ -26,6 +27,14 @@ describe('renderTemplate', () => {
     );
   });
 
+  it('分类+阶段项目数：有数据替换为数值，无该阶段替换为 0，未知分类保留原文', () => {
+    const out = renderTemplate(
+      '实施{{收入相关_项目实施阶段_项目数}}个，验收{{收入相关_竣工验收阶段_项目数}}个，基础能力实施{{基础能力_项目实施阶段_项目数}}个，{{未知分类_项目实施阶段_项目数}}',
+      data
+    );
+    expect(out).toBe('实施10个，验收0个，基础能力实施0个，{{未知分类_项目实施阶段_项目数}}');
+  });
+
   it('未出现的分类占位符替换为空字符串，模板含重复占位符全部替换', () => {
     const out = renderTemplate('{{项目总数}}/{{项目总数}}/{{未知占位}}', data);
     expect(out).toBe('233/233/{{未知占位}}');
@@ -37,10 +46,10 @@ describe('/api/report-templates 与 /api/report-preview', () => {
     await resetDb();
     const pool = getPool();
     await pool.query(
-      `INSERT INTO projects (project_code, project_name, category, budget_wan)
-       VALUES ('P001', '项目甲', '收入相关', 72400),
-              ('P002', '项目乙', '基础能力', 100),
-              ('P003', '项目丙', '拟取消', 50)`
+      `INSERT INTO projects (project_code, project_name, category, budget_wan, stage)
+       VALUES ('P001', '项目甲', '收入相关', 72400, '项目实施阶段'),
+              ('P002', '项目乙', '基础能力', 100, '勘察设计阶段'),
+              ('P003', '项目丙', '拟取消', 50, '项目实施阶段')`
     );
     await pool.query("INSERT INTO watched_projects (project_code) VALUES ('P001')");
     await pool.query(
@@ -116,6 +125,21 @@ describe('/api/report-templates 与 /api/report-preview', () => {
     expect(prev2.body.text).toBe(
       '共3个项目，取消1个。收入相关（1个，占33.3%，约7.24亿元）\n1、项目甲，详情。'
     );
+  });
+
+  it('预览支持 分类_阶段_项目数 占位符', async () => {
+    const app = createApp();
+    const c = await request(app)
+      .post('/api/report-templates')
+      .send({
+        name: 'S',
+        content:
+          '收入相关实施{{收入相关_项目实施阶段_项目数}}个，收入相关验收{{收入相关_竣工验收阶段_项目数}}个，基础能力勘察{{基础能力_勘察设计阶段_项目数}}个',
+      });
+    expect(c.status).toBe(201);
+    const prev = await request(app).get(`/api/report-preview?template_id=${c.body.id}`);
+    expect(prev.status).toBe(200);
+    expect(prev.body.text).toBe('收入相关实施1个，收入相关验收0个，基础能力勘察1个');
   });
 
   it('无模板时预览返回空文本；template_id 不存在返回 404', async () => {

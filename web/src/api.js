@@ -86,6 +86,22 @@ export const api = {
     }),
   deleteWatchProgress: (id) =>
     request(`/api/watched/progress/${id}`, { method: 'DELETE' }),
+  listContacts: (projectCode) =>
+    request(`/api/contacts${buildQuery({ project_code: projectCode })}`),
+  getContactOptions: () => request('/api/contacts/options'),
+  createContact: (c) =>
+    request('/api/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(c),
+    }),
+  updateContact: (id, c) =>
+    request(`/api/contacts/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(c),
+    }),
+  deleteContact: (id) => request(`/api/contacts/${id}`, { method: 'DELETE' }),
   getReportTemplates: () => request('/api/report-templates'),
   createReportTemplate: (name, content) =>
     request('/api/report-templates', {

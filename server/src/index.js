@@ -1,10 +1,14 @@
+import dotenv from 'dotenv';
 import { initDatabase } from './db.js';
 import { createApp } from './app.js';
 
+dotenv.config();
+const PORT = Number(process.env.PORT) || 3001;
+
 initDatabase()
   .then(() => {
-    createApp().listen(3001, () => {
-      console.log('listening on http://localhost:3001');
+    createApp().listen(PORT, () => {
+      console.log(`listening on http://localhost:${PORT}`);
     });
   })
   .catch((e) => {

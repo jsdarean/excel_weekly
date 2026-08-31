@@ -123,4 +123,19 @@ export async function initDatabase() {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // 项目关联人（需求侧联系人）：一个项目可有多名关联人，subscribed=1 表示邮件订阅项目进展
+  await p.query(`CREATE TABLE IF NOT EXISTS project_contacts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_code VARCHAR(64) NOT NULL,
+    dept VARCHAR(128),
+    room VARCHAR(128),
+    role VARCHAR(16),
+    name VARCHAR(64) NOT NULL,
+    email VARCHAR(128),
+    phone VARCHAR(32),
+    subscribed TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_project (project_code)
+  )`);
 }

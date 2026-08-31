@@ -6,6 +6,7 @@ import StatsView from './views/StatsView.vue';
 import ProjectDetail from './views/ProjectDetail.vue';
 import ImportView from './views/ImportView.vue';
 import PersonsView from './views/PersonsView.vue';
+import ContactsView from './views/ContactsView.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -17,5 +18,6 @@ export const router = createRouter({
     { path: '/projects/:code', component: ProjectDetail },
     { path: '/import', component: ImportView },
     { path: '/persons', component: PersonsView },
+    { path: '/contacts', component: ContactsView },
   ],
 });

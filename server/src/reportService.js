@@ -15,6 +15,11 @@ export function renderTemplate(template, data) {
   for (const [k, v] of Object.entries(flat)) {
     out = out.split(`{{${k}}}`).join(String(v));
   }
+  // 动态占位符：{{分类名_阶段名_项目数}}，该分类下这个阶段没有项目时替换为 0
+  out = out.replace(/\{\{([^{}_]+)_([^{}]+)_项目数\}\}/g, (m, cat, stage) => {
+    const sc = data.categories[cat]?.stageCounts;
+    return sc ? String(sc[stage] ?? 0) : m;
+  });
   return out;
 }
 
@@ -28,6 +33,15 @@ export async function buildReportData(pool) {
   const [catRows] = await pool.query(
     `SELECT category, COUNT(*) AS n, COALESCE(SUM(budget_wan), 0) AS budget
      FROM projects WHERE category IN ('收入相关', '基础能力', '支撑后端') GROUP BY category`
+  );
+
+  // 分类 × 阶段 项目数
+  const [stageRows] = await pool.query(
+    `SELECT category, stage, COUNT(*) AS n
+     FROM projects
+     WHERE category IN ('收入相关', '基础能力', '支撑后端')
+       AND stage IS NOT NULL AND stage <> ''
+     GROUP BY category, stage`
   );
 
   // 每个分类下关注项目的最新一周详细进展
@@ -56,6 +70,9 @@ export async function buildReportData(pool) {
       count,
       pct: total ? Math.round((count / total) * 1000) / 10 : 0,
       budgetYi: row ? (Number(row.budget) / 10000).toFixed(2) : '0.00',
+      stageCounts: Object.fromEntries(
+        stageRows.filter((r) => r.category === cat).map((r) => [r.stage, r.n])
+      ),
       highlights: hls.length
         ? hls
             .map((h, i) => `${i + 1}、${h.project_name}，${String(h.detail).replace(/本周/g, '').replace(/。+\s*$/, '')}。`)
