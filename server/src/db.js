@@ -123,7 +123,8 @@ export async function initDatabase() {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
-  // 项目关联人（需求侧联系人）：一个项目可有多名关联人，subscribed=1 表示邮件订阅项目进展
+  // 项目关联人（需求侧联系人）：一个项目可有多名关联人
+  // send_to/send_cc/send_bcc 分别表示邮件主送/抄送/密送
   await p.query(`CREATE TABLE IF NOT EXISTS project_contacts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     project_code VARCHAR(64) NOT NULL,
@@ -133,9 +134,38 @@ export async function initDatabase() {
     name VARCHAR(64) NOT NULL,
     email VARCHAR(128),
     phone VARCHAR(32),
-    subscribed TINYINT(1) NOT NULL DEFAULT 1,
+    send_to TINYINT(1) NOT NULL DEFAULT 1,
+    send_cc TINYINT(1) NOT NULL DEFAULT 0,
+    send_bcc TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_project (project_code)
+  )`);
+  // 兼容旧表：原 subscribed（订阅）列拆分为主送/抄送/密送
+  const [subCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'project_contacts' AND column_name = 'subscribed'`
+  );
+  if (subCol.length > 0) {
+    await p.query(
+      `ALTER TABLE project_contacts
+       ADD COLUMN send_to TINYINT(1) NOT NULL DEFAULT 1,
+       ADD COLUMN send_cc TINYINT(1) NOT NULL DEFAULT 0,
+       ADD COLUMN send_bcc TINYINT(1) NOT NULL DEFAULT 0`
+    );
+    await p.query('UPDATE project_contacts SET send_to = subscribed');
+    await p.query('ALTER TABLE project_contacts DROP COLUMN subscribed');
+  }
+  // 邮箱配置（单行，id 固定为 1；smtp_pass_enc 为 AES-256-GCM 加密后的授权码）
+  await p.query(`CREATE TABLE IF NOT EXISTS email_config (
+    id INT PRIMARY KEY,
+    smtp_host VARCHAR(128),
+    smtp_port INT,
+    smtp_secure TINYINT(1) NOT NULL DEFAULT 1,
+    smtp_user VARCHAR(128),
+    smtp_pass_enc TEXT,
+    from_name VARCHAR(64),
+    from_addr VARCHAR(128),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
 }

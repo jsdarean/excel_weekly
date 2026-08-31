@@ -12,7 +12,7 @@
           <tr>
             <th>项目编码</th><th>项目名称</th>
             <th>部门</th><th>室</th><th>职务</th>
-            <th>姓名</th><th>邮箱</th><th>电话</th><th>订阅</th><th>操作</th>
+            <th>姓名</th><th>邮箱</th><th>电话</th><th>主送</th><th>抄送</th><th>密送</th><th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -31,7 +31,13 @@
             <td>{{ c.email }}</td>
             <td class="num">{{ c.phone }}</td>
             <td>
-              <input type="checkbox" :checked="!!c.subscribed" @change="toggleSubscribe(c)" title="是否邮件订阅项目进展" />
+              <input type="checkbox" :checked="!!c.send_to" @change="toggleFlag(c, 'send_to')" title="主送" />
+            </td>
+            <td>
+              <input type="checkbox" :checked="!!c.send_cc" @change="toggleFlag(c, 'send_cc')" title="抄送" />
+            </td>
+            <td>
+              <input type="checkbox" :checked="!!c.send_bcc" @change="toggleFlag(c, 'send_bcc')" title="密送" />
             </td>
             <td class="ops">
               <button @click="openForm(c)">编辑</button>
@@ -95,7 +101,12 @@
         <label>姓名 <input type="text" v-model="editing.name" /></label>
         <label>邮箱 <input type="email" v-model="editing.email" /></label>
         <label>电话 <input type="text" v-model="editing.phone" /></label>
-        <label>邮件订阅 <input type="checkbox" v-model="editing.subscribed" /></label>
+        <div class="send-flags">
+          <span>发送方式</span>
+          <label><input type="checkbox" v-model="editing.sendTo" /> 主送</label>
+          <label><input type="checkbox" v-model="editing.sendCc" /> 抄送</label>
+          <label><input type="checkbox" v-model="editing.sendBcc" /> 密送</label>
+        </div>
         <p v-if="formError" class="error">{{ formError }}</p>
         <div class="dialog-actions">
           <button class="primary" @click="save">保存</button>
@@ -141,7 +152,9 @@ function openForm(c) {
         name: c.name ?? '',
         email: c.email ?? '',
         phone: c.phone ?? '',
-        subscribed: !!c.subscribed,
+        sendTo: !!c.send_to,
+        sendCc: !!c.send_cc,
+        sendBcc: !!c.send_bcc,
       }
     : {
         id: null,
@@ -153,7 +166,9 @@ function openForm(c) {
         name: '',
         email: '',
         phone: '',
-        subscribed: true,
+        sendTo: true,
+        sendCc: false,
+        sendBcc: false,
       };
 }
 
@@ -200,7 +215,7 @@ async function save() {
   }
 }
 
-async function toggleSubscribe(c) {
+async function toggleFlag(c, field) {
   error.value = '';
   try {
     await api.updateContact(c.id, {
@@ -211,7 +226,9 @@ async function toggleSubscribe(c) {
       name: c.name,
       email: c.email ?? '',
       phone: c.phone ?? '',
-      subscribed: !c.subscribed,
+      sendTo: field === 'send_to' ? !c.send_to : !!c.send_to,
+      sendCc: field === 'send_cc' ? !c.send_cc : !!c.send_cc,
+      sendBcc: field === 'send_bcc' ? !c.send_bcc : !!c.send_bcc,
     });
     await load();
   } catch (e) {
@@ -301,6 +318,14 @@ onMounted(async () => {
 .dialog label input[type="text"],
 .dialog label input[type="email"],
 .dialog label select { flex: 1; }
+.send-flags {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.send-flags label { display: flex; align-items: center; gap: 4px; }
 .dialog-actions { display: flex; gap: 12px; margin-top: 8px; }
 .proj-picker input { width: 100%; box-sizing: border-box; }
 .candidates {

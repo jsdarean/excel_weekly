@@ -10,8 +10,8 @@ function validate(body) {
   if (!String(body.name ?? '').trim()) return '关联人姓名不能为空';
   const role = String(body.role ?? '').trim();
   if (role && !ROLES.includes(role)) return '职务只能是「室经理」或「员工」';
-  if (body.subscribed && !String(body.email ?? '').trim()) {
-    return '订阅邮件进展时邮箱不能为空';
+  if ((body.sendTo || body.sendCc || body.sendBcc) && !String(body.email ?? '').trim()) {
+    return '勾选主送/抄送/密送时邮箱不能为空';
   }
   return null;
 }
@@ -25,7 +25,9 @@ function toRow(body) {
     name: String(body.name).trim(),
     email: String(body.email ?? '').trim() || null,
     phone: String(body.phone ?? '').trim() || null,
-    subscribed: body.subscribed ? 1 : 0,
+    send_to: body.sendTo ? 1 : 0,
+    send_cc: body.sendCc ? 1 : 0,
+    send_bcc: body.sendBcc ? 1 : 0,
   };
 }
 
@@ -45,7 +47,8 @@ router.get('/', async (req, res) => {
       params.push(req.query.project_code);
     }
     const [rows] = await pool.query(
-      `SELECT c.id, c.project_code, c.dept, c.room, c.role, c.name, c.email, c.phone, c.subscribed,
+      `SELECT c.id, c.project_code, c.dept, c.room, c.role, c.name, c.email, c.phone,
+              c.send_to, c.send_cc, c.send_bcc,
               p.project_name, p.content
        FROM project_contacts c
        LEFT JOIN projects p ON p.project_code = c.project_code
@@ -110,8 +113,8 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: '项目不存在' });
     }
     const [r] = await pool.query(
-      'INSERT INTO project_contacts (project_code, dept, room, role, name, email, phone, subscribed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [row.project_code, row.dept, row.room, row.role, row.name, row.email, row.phone, row.subscribed]
+      'INSERT INTO project_contacts (project_code, dept, room, role, name, email, phone, send_to, send_cc, send_bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [row.project_code, row.dept, row.room, row.role, row.name, row.email, row.phone, row.send_to, row.send_cc, row.send_bcc]
     );
     res.status(201).json({ id: r.insertId });
   } catch (e) {
@@ -132,8 +135,8 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: '项目不存在' });
     }
     await pool.query(
-      'UPDATE project_contacts SET project_code = ?, dept = ?, room = ?, role = ?, name = ?, email = ?, phone = ?, subscribed = ? WHERE id = ?',
-      [row.project_code, row.dept, row.room, row.role, row.name, row.email, row.phone, row.subscribed, req.params.id]
+      'UPDATE project_contacts SET project_code = ?, dept = ?, room = ?, role = ?, name = ?, email = ?, phone = ?, send_to = ?, send_cc = ?, send_bcc = ? WHERE id = ?',
+      [row.project_code, row.dept, row.room, row.role, row.name, row.email, row.phone, row.send_to, row.send_cc, row.send_bcc, req.params.id]
     );
     res.json({ id: Number(req.params.id) });
   } catch (e) {

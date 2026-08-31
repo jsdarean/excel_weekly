@@ -18,7 +18,9 @@ const contact = {
   name: '王五',
   email: 'wangwu@example.com',
   phone: '13800000000',
-  subscribed: true,
+  sendTo: true,
+  sendCc: false,
+  sendBcc: false,
 };
 
 describe('/api/contacts', () => {
@@ -44,16 +46,20 @@ describe('/api/contacts', () => {
       role: '室经理',
       name: '王五',
       email: 'wangwu@example.com',
-      subscribed: 1,
+      send_to: 1,
+      send_cc: 0,
+      send_bcc: 0,
     });
 
     const updated = await request(app)
       .put(`/api/contacts/${id}`)
-      .send({ ...contact, phone: '13900000000', subscribed: false });
+      .send({ ...contact, phone: '13900000000', sendTo: false, sendCc: true, sendBcc: true });
     expect(updated.status).toBe(200);
     const list2 = await request(app).get('/api/contacts?project_code=P001');
     expect(list2.body.contacts[0].phone).toBe('13900000000');
-    expect(list2.body.contacts[0].subscribed).toBe(0);
+    expect(list2.body.contacts[0].send_to).toBe(0);
+    expect(list2.body.contacts[0].send_cc).toBe(1);
+    expect(list2.body.contacts[0].send_bcc).toBe(1);
 
     const del = await request(app).delete(`/api/contacts/${id}`);
     expect(del.status).toBe(204);
@@ -85,14 +91,18 @@ describe('/api/contacts', () => {
     expect(badRole.status).toBe(400);
   });
 
-  it('订阅但邮箱为空返回 400；更新不存在的 id 返回 404', async () => {
+  it('勾选发送但邮箱为空返回 400；不勾选任何发送方式时邮箱可空；更新不存在的 id 返回 404', async () => {
     const app = createApp();
     const noEmail = await request(app).post('/api/contacts').send({ ...contact, email: '' });
     expect(noEmail.status).toBe(400);
-    // 不订阅时邮箱可空
+    const noEmailBcc = await request(app)
+      .post('/api/contacts')
+      .send({ ...contact, email: '', sendTo: false, sendBcc: true });
+    expect(noEmailBcc.status).toBe(400);
+    // 不勾选任何发送方式时邮箱可空
     const ok = await request(app)
       .post('/api/contacts')
-      .send({ ...contact, email: '', subscribed: false });
+      .send({ ...contact, email: '', sendTo: false });
     expect(ok.status).toBe(201);
     const missing = await request(app).put('/api/contacts/999').send(contact);
     expect(missing.status).toBe(404);

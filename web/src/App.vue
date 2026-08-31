@@ -9,6 +9,7 @@
       <router-link to="/import">数据导入</router-link>
       <router-link to="/persons">人员配置</router-link>
       <router-link to="/contacts">项目关联人</router-link>
+      <router-link to="/email-config">邮箱配置</router-link>
     </nav>
     <main class="page">
       <router-view />

@@ -102,6 +102,19 @@ export const api = {
       body: JSON.stringify(c),
     }),
   deleteContact: (id) => request(`/api/contacts/${id}`, { method: 'DELETE' }),
+  getEmailConfig: () => request('/api/email-config'),
+  saveEmailConfig: (c) =>
+    request('/api/email-config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(c),
+    }),
+  testEmailConfig: (to) =>
+    request('/api/email-config/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to }),
+    }),
   getReportTemplates: () => request('/api/report-templates'),
   createReportTemplate: (name, content) =>
     request('/api/report-templates', {

@@ -10,6 +10,7 @@ import statsRouter from './routes/stats.js';
 import projectsRouter from './routes/projects.js';
 import watchedRouter from './routes/watched.js';
 import contactsRouter from './routes/contacts.js';
+import emailConfigRouter from './routes/emailConfig.js';
 import reportRouter from './routes/report.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,7 @@ export function createApp() {
   app.use('/api', projectsRouter);
   app.use('/api', watchedRouter);
   app.use('/api/contacts', contactsRouter);
+  app.use('/api/email-config', emailConfigRouter);
   app.use('/api', reportRouter);
 
   // 生产模式：托管前端构建产物，非 /api 的 GET 回退到 index.html

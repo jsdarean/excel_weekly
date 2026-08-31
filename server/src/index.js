@@ -2,6 +2,9 @@ import dotenv from 'dotenv';
 import { initDatabase } from './db.js';
 import { createApp } from './app.js';
 
+// 系统时区固定为北京时区，保证邮件 Date 头与展示时间为 +0800
+process.env.TZ = 'Asia/Shanghai';
+
 dotenv.config();
 const PORT = Number(process.env.PORT) || 3001;
 
