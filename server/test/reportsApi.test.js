@@ -133,6 +133,16 @@ describe('GET /api/reports', () => {
     expect(p2.mail_enabled).toBe(0);
   });
 
+  it('关注项目（watched_projects）返回 watched=1，否则为 0', async () => {
+    const pool = getPool();
+    await pool.query("INSERT INTO watched_projects (project_code) VALUES ('P001')");
+    const res = await request(createApp()).get('/api/reports');
+    const p1 = res.body.rows.find((r) => r.project_code === 'P001');
+    const p2 = res.body.rows.find((r) => r.project_code === 'P002');
+    expect(p1.watched).toBe(1);
+    expect(p2.watched).toBe(0);
+  });
+
   it('置顶项目（pin_order）排在最前并按 pin_order 升序，其余按现有规则', async () => {    const pool = getPool();
     // 无置顶时：P001（基础能力）在 P002（支撑后端）前
     const before = await request(createApp()).get('/api/reports');

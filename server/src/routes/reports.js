@@ -45,6 +45,9 @@ router.get('/reports', async (req, res) => {
                   AND (c.send_to = 1 OR c.send_cc = 1 OR c.send_bcc = 1)
                   AND c.email IS NOT NULL AND c.email <> ''
               ) AS mail_enabled,
+              EXISTS(
+                SELECT 1 FROM watched_projects wp WHERE wp.project_code = p.project_code
+              ) AS watched,
               w.report_date, w.progress, w.purchase_rate, w.disclosure,
               w.arrival_rate, w.online_handover, w.final_acceptance
        FROM projects p
