@@ -119,8 +119,21 @@ describe('GET /api/reports', () => {
     ]);
   });
 
-  it('置顶项目（pin_order）排在最前并按 pin_order 升序，其余按现有规则', async () => {
+  it('关联人勾选了主送/抄送/密送且有邮箱的项目返回 mail_enabled=1，否则为 0', async () => {
     const pool = getPool();
+    await pool.query(
+      `INSERT INTO project_contacts (project_code, name, email, send_to, send_cc, send_bcc)
+       VALUES ('P001', '收件人A', 'a@x.com', 1, 0, 0),
+              ('P002', '无邮箱', NULL, 1, 0, 0)`
+    );
+    const res = await request(createApp()).get('/api/reports');
+    const p1 = res.body.rows.find((r) => r.project_code === 'P001');
+    const p2 = res.body.rows.find((r) => r.project_code === 'P002');
+    expect(p1.mail_enabled).toBe(1);
+    expect(p2.mail_enabled).toBe(0);
+  });
+
+  it('置顶项目（pin_order）排在最前并按 pin_order 升序，其余按现有规则', async () => {    const pool = getPool();
     // 无置顶时：P001（基础能力）在 P002（支撑后端）前
     const before = await request(createApp()).get('/api/reports');
     expect(before.body.rows.map((r) => r.project_code)).toEqual(['P001', 'P002']);

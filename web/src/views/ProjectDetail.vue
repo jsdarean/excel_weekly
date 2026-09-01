@@ -26,7 +26,10 @@
               <option v-for="s in STAGES" :key="s" :value="s">{{ s }}</option>
             </select>
           </div>
-          <div class="info-item wide"><label>建设内容</label><span>{{ project.content }}</span></div>
+          <div class="info-item wide">
+            <label>建设内容</label>
+            <textarea v-model="editContent" rows="3" placeholder="-"></textarea>
+          </div>
           <div class="info-item"><label>需求部门</label><input v-model="editDemandDept" type="text" placeholder="-" /></div>
           <div class="info-item"><label>需求室</label><input v-model="editDemandRoom" type="text" placeholder="-" /></div>
           <div class="info-item"><label>需求责任人</label><input v-model="editDemandOwner" type="text" placeholder="-" /></div>
@@ -87,6 +90,7 @@ const editStage = ref('');
 const editDemandDept = ref('');
 const editDemandRoom = ref('');
 const editDemandOwner = ref('');
+const editContent = ref('');
 const saving = ref(false);
 const savedTip = ref('');
 const saveError = ref('');
@@ -102,7 +106,8 @@ const dirty = computed(() => {
     editStage.value !== norm(project.value.stage) ||
     editDemandDept.value !== norm(project.value.demand_dept) ||
     editDemandRoom.value !== norm(project.value.demand_room) ||
-    editDemandOwner.value !== norm(project.value.demand_owner)
+    editDemandOwner.value !== norm(project.value.demand_owner) ||
+    editContent.value !== norm(project.value.content)
   );
 });
 
@@ -123,6 +128,7 @@ async function save() {
       demand_dept: editDemandDept.value,
       demand_room: editDemandRoom.value,
       demand_owner: editDemandOwner.value,
+      content: editContent.value,
     };
     await api.updateProject(code, body);
     project.value.category = editCategory.value;
@@ -130,6 +136,7 @@ async function save() {
     project.value.demand_dept = editDemandDept.value || null;
     project.value.demand_room = editDemandRoom.value || null;
     project.value.demand_owner = editDemandOwner.value || null;
+    project.value.content = editContent.value || null;
     savedTip.value = '已保存';
     setTimeout(() => { savedTip.value = ''; }, 2000);
   } catch (e) {
@@ -149,6 +156,7 @@ onMounted(async () => {
     editDemandDept.value = norm(res.project.demand_dept);
     editDemandRoom.value = norm(res.project.demand_room);
     editDemandOwner.value = norm(res.project.demand_owner);
+    editContent.value = norm(res.project.content);
   } catch (e) {
     error.value = e.message;
   }
@@ -169,6 +177,17 @@ onMounted(async () => {
 .info-item span { font-size: 15px; }
 .info-item select,
 .info-item input { align-self: flex-start; min-width: 160px; padding: 6px 8px; border: 1px solid var(--hairline-input); border-radius: var(--r-sm); font-size: 14px; }
+.info-item textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline-input);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.info-item textarea:focus { outline: none; border-color: var(--primary); }
 .info-item input:focus { outline: none; border-color: var(--primary); }
 .save-row { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
 .saved-tip { color: #1a7f37; font-size: 13px; }

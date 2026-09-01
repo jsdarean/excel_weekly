@@ -39,6 +39,8 @@
       <button class="primary" :disabled="!rows.length" @click="onExport">导出 Excel</button>
     </div>
 
+    <p class="mail-hint">有底色的项目为每周批量邮件发送项目进展的项目，请关注周进展。</p>
+
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="!reportDate">暂无数据，请先到「数据导入」页导入 Excel。</p>
     <div
@@ -71,7 +73,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in rows" :key="r.id">
+          <tr v-for="r in rows" :key="r.id" :class="{ 'mail-on': r.mail_enabled }">
             <td class="nowrap sticky" :style="{ left: '0px' }">{{ r.category_major }}</td>
             <td class="nowrap sticky num" :style="{ left: lefts.code }">{{ r.project_code }}</td>
             <td class="sticky last-frozen" :style="[{ left: lefts.name }, nameColStyle]">
@@ -327,6 +329,15 @@ th.sticky { z-index: 5; }
 tbody tr:hover td.sticky { background: var(--canvas-soft); }
 /* 冻结区右缘分隔线 */
 .last-frozen { box-shadow: 1px 0 0 var(--hairline); }
+
+/* 批量邮件发送项目：显目底色（需覆盖冻结列的实底背景与悬停态） */
+tbody tr.mail-on td { background: #fff3d6; }
+tbody tr.mail-on td.sticky { background: #fff3d6; }
+tbody tr.mail-on:hover td,
+tbody tr.mail-on:hover td.sticky { background: #ffe9b8; }
+
+/* 备注：批量邮件项目说明 */
+.mail-hint { font-size: 13px; color: var(--ink-mute); margin: 0 0 8px; }
 
 /* 省略单元格：悬停浮层由 JS 驱动（.hover-tip），此处只负责单行省略 */
 .clip {

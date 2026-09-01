@@ -39,6 +39,12 @@ router.get('/reports', async (req, res) => {
               p.approval_date, p.category, p.owner, p.budget_wan, p.stage,
               p.content, p.demand_dept, p.demand_room, p.demand_owner,
               p.pin_order,
+              EXISTS(
+                SELECT 1 FROM project_contacts c
+                WHERE c.project_code = p.project_code
+                  AND (c.send_to = 1 OR c.send_cc = 1 OR c.send_bcc = 1)
+                  AND c.email IS NOT NULL AND c.email <> ''
+              ) AS mail_enabled,
               w.report_date, w.progress, w.purchase_rate, w.disclosure,
               w.arrival_rate, w.online_handover, w.final_acceptance
        FROM projects p
