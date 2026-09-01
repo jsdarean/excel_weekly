@@ -8,10 +8,10 @@ import { encryptText } from '../src/utils/crypto.js';
 async function seed() {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO projects (project_code, project_name, content, owner)
-     VALUES ('P001', '智算X节点工程', '建设20台推理服务器', '张三'),
-            ('P002', '项目乙', '内容乙', '李四'),
-            ('P003', '项目丙', '内容丙', '王五')`
+    `INSERT INTO projects (project_code, project_name, content, owner, budget_wan, stage)
+     VALUES ('P001', '智算X节点工程', '建设20台推理服务器', '张三', 320, '项目实施阶段'),
+            ('P002', '项目乙', '内容乙', '李四', NULL, NULL),
+            ('P003', '项目丙', '内容丙', '王五', NULL, NULL)`
   );
   await pool.query(
     `INSERT INTO persons (name, phone, email, title)
@@ -105,6 +105,12 @@ describe('批量邮件项目列表与预览', () => {
     expect(m.text).not.toContain('{{');
     expect(m.html).toContain('项目进展通报');
     expect(m.html).toContain('智算X节点工程');
+    // 信息卡片：项目编码下面是建设内容，另有立项金额/项目阶段/工程责任人
+    expect(m.html).toContain('建设20台推理服务器');
+    expect(m.html).toContain('320');
+    expect(m.html).toContain('项目实施阶段');
+    expect(m.html.indexOf('项目编码')).toBeLessThan(m.html.indexOf('建设内容'));
+    expect(m.html.indexOf('建设内容')).toBeLessThan(m.html.indexOf('立项金额'));
     expect(m.to).toEqual(['收件人A<a@x.com>']);
     // 抄送顺序：关联人勾选(b) → 总经理(qz) → 副总(a，已在主送中剔除) → 室经理(zm) → 工程责任人(zhangsan)
     // 无职务/无邮箱人员不加入（注意赵经理虽先插入，但总经理必须排在室经理前）

@@ -60,7 +60,7 @@ function textToParagraphs(text) {
 }
 
 // 商务风格 HTML 外壳（全部内联样式，兼容主流邮件客户端）
-export function buildHtmlEmail({ projectName, projectCode, reportDate, bodyText, signatureText }) {
+export function buildHtmlEmail({ projectName, projectCode, content, budgetWan, stage, owner, reportDate, bodyText, signatureText }) {
   const metaRow = (label, value) =>
     `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${label}</td>` +
     `<td style="padding:6px 0;color:#111827;font-size:13px;">${escapeHtml(value)}</td></tr>`;
@@ -78,6 +78,10 @@ export function buildHtmlEmail({ projectName, projectCode, reportDate, bodyText,
           <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody>
             ${metaRow('项目名称', projectName)}
             ${metaRow('项目编码', projectCode)}
+            ${metaRow('建设内容', content)}
+            ${metaRow('立项金额（万元）', budgetWan)}
+            ${metaRow('项目阶段', stage)}
+            ${metaRow('工程责任人', owner)}
             ${metaRow('周报日期', reportDate)}
           </tbody></table>
         </td></tr>
@@ -127,7 +131,7 @@ export function buildCcList(contactCc, leaders, owner, contactTo) {
 // 按项目组装邮件数据：项目基础信息 + 最新一周进展 + 工程责任人联系方式 + 收件人分组
 export async function buildMailData(pool, projectCode) {
   const [prows] = await pool.query(
-    'SELECT project_code, project_name, content, owner FROM projects WHERE project_code = ?',
+    'SELECT project_code, project_name, content, owner, budget_wan, stage FROM projects WHERE project_code = ?',
     [projectCode]
   );
   if (!prows.length) return null;
@@ -182,6 +186,8 @@ export async function buildMailData(pool, projectCode) {
       '周报日期': latest ? latest.report_date : '',
     },
     reportDate: latest ? latest.report_date : null,
+    budgetWan: p.budget_wan === null || p.budget_wan === undefined ? '' : String(Number(p.budget_wan)),
+    stage: p.stage || '',
     to: contactTo.map(fmtAddr),
     cc: cc.map(fmtAddr),
     bcc: contactBcc.map(fmtAddr),
@@ -201,6 +207,10 @@ export async function renderProjectMail(pool, projectCode) {
   const html = buildHtmlEmail({
     projectName: data.placeholders['项目名称'],
     projectCode: data.projectCode,
+    content: data.placeholders['建设内容'],
+    budgetWan: data.budgetWan,
+    stage: data.stage,
+    owner: data.placeholders['工程责任人'],
     reportDate: data.reportDate || '',
     bodyText,
     signatureText,
