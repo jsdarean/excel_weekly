@@ -81,9 +81,18 @@ export async function initDatabase() {
     phone VARCHAR(32),
     short_number VARCHAR(16),
     email VARCHAR(128),
+    title VARCHAR(16),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：职务列（员工/室经理/副总/总经理，可空）
+  const [titleCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'persons' AND column_name = 'title'`
+  );
+  if (titleCol.length === 0) {
+    await p.query('ALTER TABLE persons ADD COLUMN title VARCHAR(16)');
+  }
   await p.query(`CREATE TABLE IF NOT EXISTS watched_projects (
     id INT AUTO_INCREMENT PRIMARY KEY,
     project_code VARCHAR(64) NOT NULL UNIQUE,
@@ -167,5 +176,26 @@ export async function initDatabase() {
     from_name VARCHAR(64),
     from_addr VARCHAR(128),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+  // 批量邮件模板（单行，id 固定为 1）：主题/正文/签名，均支持 {{占位符}}
+  await p.query(`CREATE TABLE IF NOT EXISTS mail_template (
+    id INT PRIMARY KEY,
+    subject VARCHAR(255),
+    body MEDIUMTEXT,
+    signature MEDIUMTEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+  // 批量邮件发送记录
+  await p.query(`CREATE TABLE IF NOT EXISTS mail_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_code VARCHAR(64) NOT NULL,
+    report_date DATE NULL,
+    subject VARCHAR(255),
+    to_addr TEXT,
+    cc_addr TEXT,
+    bcc_addr TEXT,
+    status VARCHAR(16) NOT NULL,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 }

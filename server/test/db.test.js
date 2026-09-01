@@ -10,6 +10,8 @@ describe('initDatabase', () => {
     );
     expect(rows.map((r) => r.TABLE_NAME ?? r.table_name)).toEqual([
       'email_config',
+      'mail_logs',
+      'mail_template',
       'persons',
       'project_contacts',
       'projects',

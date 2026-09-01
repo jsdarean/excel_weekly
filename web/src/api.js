@@ -45,6 +45,11 @@ export const api = {
       body: JSON.stringify(p),
     }),
   deletePerson: (id) => request(`/api/persons/${id}`, { method: 'DELETE' }),
+  importPersons(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request('/api/persons/import', { method: 'POST', body: fd });
+  },
   getProject: (code) => request(`/api/projects/${encodeURIComponent(code)}`),
   updateProject: (code, body) =>
     request(`/api/projects/${encodeURIComponent(code)}`, {
@@ -120,6 +125,22 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to }),
     }),
+  getMailTemplate: () => request('/api/bulk-mail/template'),
+  saveMailTemplate: (t) =>
+    request('/api/bulk-mail/template', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(t),
+    }),
+  getMailProjects: () => request('/api/bulk-mail/projects'),
+  previewMail: (code) => request(`/api/bulk-mail/preview/${encodeURIComponent(code)}`),
+  sendMail: (code) =>
+    request('/api/bulk-mail/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectCode: code }),
+    }),
+  getMailLogs: () => request('/api/bulk-mail/logs'),
   getReportTemplates: () => request('/api/report-templates'),
   createReportTemplate: (name, content) =>
     request('/api/report-templates', {
