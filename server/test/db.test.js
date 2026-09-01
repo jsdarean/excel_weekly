@@ -9,7 +9,9 @@ describe('initDatabase', () => {
       "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name"
     );
     expect(rows.map((r) => r.TABLE_NAME ?? r.table_name)).toEqual([
+      'email_config',
       'persons',
+      'project_contacts',
       'projects',
       'report_templates',
       'watch_progress',
