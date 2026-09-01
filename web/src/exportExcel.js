@@ -96,10 +96,8 @@ const THIN = { style: 'thin' };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 const HEADER_HEIGHT = 43.5;
 const DATA_ROW_HEIGHT = 80;
-// 批量邮件项目行的底色（与项目列表页底色一致）
+// 批量邮件/关注项目行的底色（与项目列表页底色一致）
 const HIGHLIGHT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3D6' } };
-// 关注项目行的底色（浅蓝）
-const WATCHED_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } };
 
 // 列宽（A-Q，参考文件实测）
 const COL_WIDTHS = [3.86, 9.6, 15.73, 30.07, 12.2, 10.46, 8.2, 9.33, 16.2,
@@ -167,10 +165,9 @@ export function buildWorkbook(rows, reportDate) {
       if (isHeader) {
         cell.fill = HEADER_FILL;
       } else {
-        // 批量邮件发送项目：浅金底色；关注项目：浅蓝底色；重叠时金色优先（附件下载不加底色）
+        // 批量邮件发送项目或关注项目：整行浅金底色（附件下载不加底色）
         const src = rows[rIdx - 1];
-        if (src?.mail_enabled) cell.fill = HIGHLIGHT_FILL;
-        else if (src?.watched) cell.fill = WATCHED_FILL;
+        if (src?.mail_enabled || src?.watched) cell.fill = HIGHLIGHT_FILL;
         if (PERCENT_COLS.includes(colNumber)) {
           cell.numFmt = '0%';
         }

@@ -108,14 +108,14 @@ describe('buildExportData', () => {
     expect(ws2.getCell('A2').fill?.fgColor?.argb).not.toBe('FFFFF3D6');
   });
 
-  it('导出Excel：关注项目行加浅蓝底色；与邮件项目重叠时金色优先；附件下载不加', () => {
+  it('导出Excel：关注项目与邮件项目行都加浅金底色；附件下载不加', () => {
     const mixed = [
-      { ...rows[0], watched: 1 },                    // 仅关注 → 浅蓝
-      { ...rows[1], watched: 1, mail_enabled: 1 },   // 关注+邮件 → 金色优先
+      { ...rows[0], watched: 1 },                    // 仅关注 → 浅金
+      { ...rows[1], watched: 1, mail_enabled: 1 },   // 关注+邮件 → 同为浅金
     ];
     const wb = buildWorkbook(mixed, '2026-08-21');
     const ws = wb.worksheets[0];
-    expect(ws.getCell('A2').fill).toMatchObject({ pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } });
+    expect(ws.getCell('A2').fill).toMatchObject({ pattern: 'solid', fgColor: { argb: 'FFFFF3D6' } });
     expect(ws.getCell('A3').fill).toMatchObject({ pattern: 'solid', fgColor: { argb: 'FFFFF3D6' } });
 
     const wb2 = buildAttachmentWorkbook(mixed, '2026-08-21');
