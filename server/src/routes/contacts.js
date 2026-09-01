@@ -1,7 +1,14 @@
 import { Router } from 'express';
+import multer from 'multer';
+import xlsx from 'xlsx';
 import { getPool } from '../db.js';
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 const ROLES = ['室经理', '员工'];
 
@@ -35,6 +42,86 @@ async function projectExists(pool, code) {
   const [rows] = await pool.query('SELECT 1 AS x FROM projects WHERE project_code = ?', [code]);
   return rows.length > 0;
 }
+
+// Excel 导入：表头列（与导出格式一致，项目名称列仅作展示、导入时忽略）
+const IMPORT_HEADERS = ['项目编码', '部门', '室', '职务', '姓名', '邮箱', '电话', '主送', '抄送', '密送'];
+const TRUE_VALUES = new Set(['是', '√', '✓', '1', 'true', 'TRUE', 'y', 'Y']);
+
+function cellText(v) {
+  return v === null || v === undefined ? '' : String(v).trim();
+}
+
+// 导入关联人：重复（同项目编码+姓名）跳过，错误行记录原因
+router.post('/import', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '缺少上传文件 file' });
+    let aoa;
+    try {
+      const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
+      aoa = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+    } catch (e) {
+      return res.status(400).json({ error: `Excel 解析失败：${e.message}` });
+    }
+    if (!aoa.length) return res.status(400).json({ error: 'Excel 内容为空' });
+
+    const header = aoa[0].map(cellText);
+    const col = new Map(IMPORT_HEADERS.map((h) => [h, header.indexOf(h)]));
+    const missing = ['项目编码', '姓名'].filter((h) => col.get(h) < 0);
+    if (missing.length) {
+      return res.status(400).json({
+        error: `缺少必需表头列：${missing.join('、')}。请先点「导出 Excel」获取模板格式`,
+      });
+    }
+
+    const pool = getPool();
+    const result = { added: 0, skipped: 0, errors: [] };
+    for (let i = 1; i < aoa.length; i++) {
+      const r = aoa[i];
+      const rowNo = i + 1;
+      const get = (h) => (col.get(h) >= 0 ? cellText(r[col.get(h)]) : '');
+      const body = {
+        projectCode: get('项目编码'),
+        dept: get('部门'),
+        room: get('室'),
+        role: get('职务'),
+        name: get('姓名'),
+        email: get('邮箱'),
+        phone: get('电话'),
+        sendTo: TRUE_VALUES.has(get('主送')),
+        sendCc: TRUE_VALUES.has(get('抄送')),
+        sendBcc: TRUE_VALUES.has(get('密送')),
+      };
+      // 整行空白直接忽略
+      if (!body.projectCode && !body.name) continue;
+      const err = validate(body);
+      if (err) {
+        result.errors.push({ row: rowNo, reason: err });
+        continue;
+      }
+      if (!(await projectExists(pool, body.projectCode))) {
+        result.errors.push({ row: rowNo, reason: `项目 ${body.projectCode} 不存在` });
+        continue;
+      }
+      const [dup] = await pool.query(
+        'SELECT 1 AS x FROM project_contacts WHERE project_code = ? AND name = ?',
+        [body.projectCode, body.name]
+      );
+      if (dup.length) {
+        result.skipped++;
+        continue;
+      }
+      const row = toRow(body);
+      await pool.query(
+        'INSERT INTO project_contacts (project_code, dept, room, role, name, email, phone, send_to, send_cc, send_bcc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [row.project_code, row.dept, row.room, row.role, row.name, row.email, row.phone, row.send_to, row.send_cc, row.send_bcc]
+      );
+      result.added++;
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: `导入失败：${e.message}` });
+  }
+});
 
 // 关联人列表（联查项目名称、建设内容；可按项目编码过滤）
 router.get('/', async (req, res) => {

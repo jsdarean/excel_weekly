@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
+import xlsx from 'xlsx';
 import { createApp } from '../src/app.js';
 import { getPool } from '../src/db.js';
 import { resetDb } from './helpers/db.js';
@@ -106,5 +107,52 @@ describe('/api/contacts', () => {
     expect(ok.status).toBe(201);
     const missing = await request(app).put('/api/contacts/999').send(contact);
     expect(missing.status).toBe(404);
+  });
+
+  it('Excel 导入：合法行新增、重复行跳过、非法行记录原因', async () => {
+    const app = createApp();
+    // 预置一条重复数据
+    await request(app).post('/api/contacts').send(contact);
+
+    const aoa = [
+      ['项目编码', '项目名称', '部门', '室', '职务', '姓名', '邮箱', '电话', '主送', '抄送', '密送'],
+      ['P001', '项目甲', '政企事业部', '行业一室', '室经理', '王五', 'w@x.com', '138', '是', '', ''],   // 重复 → 跳过
+      ['P001', '项目甲', '政企事业部', '行业一室', '员工', '赵六', 'z@x.com', '', '', '是', '是'],      // 新增
+      ['P001', '项目甲', '', '', '', '', '', '', '', '', ''],                                              // 姓名空 → 失败
+      ['NOPE', '', '', '', '', '张三', 's@x.com', '', '是', '', ''],                                     // 项目不存在 → 失败
+      ['P001', '项目甲', '', '', '', '钱七', '', '', '', '', ''],                                         // 无发送方式无邮箱 → 新增
+    ];
+    const ws = xlsx.utils.aoa_to_sheet(aoa);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const res = await request(app)
+      .post('/api/contacts/import')
+      .attach('file', buf, 'contacts.xlsx');
+    expect(res.status).toBe(200);
+    expect(res.body.added).toBe(2);
+    expect(res.body.skipped).toBe(1);
+    expect(res.body.errors).toHaveLength(2);
+    expect(res.body.errors[0].reason).toContain('姓名');
+    expect(res.body.errors[1].reason).toContain('不存在');
+
+    const list = await request(app).get('/api/contacts?project_code=P001');
+    expect(list.body.contacts).toHaveLength(3);
+    const zl = list.body.contacts.find((c) => c.name === '赵六');
+    expect(zl).toMatchObject({ send_to: 0, send_cc: 1, send_bcc: 1, role: '员工' });
+  });
+
+  it('Excel 导入：缺必需表头返回 400', async () => {
+    const app = createApp();
+    const ws = xlsx.utils.aoa_to_sheet([['序号', '备注'], [1, 'x']]);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const res = await request(app)
+      .post('/api/contacts/import')
+      .attach('file', buf, 'bad.xlsx');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('项目编码');
   });
 });

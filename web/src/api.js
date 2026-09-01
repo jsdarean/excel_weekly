@@ -102,6 +102,11 @@ export const api = {
       body: JSON.stringify(c),
     }),
   deleteContact: (id) => request(`/api/contacts/${id}`, { method: 'DELETE' }),
+  importContacts(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request('/api/contacts/import', { method: 'POST', body: fd });
+  },
   getEmailConfig: () => request('/api/email-config'),
   saveEmailConfig: (c) =>
     request('/api/email-config', {

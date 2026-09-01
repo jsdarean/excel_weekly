@@ -1,10 +1,22 @@
 <template>
   <div>
     <h2>项目关联人</h2>
-    <p>
+    <p class="toolbar">
       <button class="primary" @click="openForm(null)">新增关联人</button>
+      <button :disabled="importing" @click="fileInput.click()">{{ importing ? '导入中…' : '导入 Excel' }}</button>
+      <button :disabled="!contacts.length" @click="doExport">导出 Excel</button>
+      <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onImport" />
     </p>
     <p v-if="error" class="error">{{ error }}</p>
+    <div v-if="importResult" class="import-result">
+      <p class="ok-tip">
+        导入完成：新增 {{ importResult.added }} 条，跳过重复 {{ importResult.skipped }} 条，失败 {{ importResult.errors.length }} 条
+      </p>
+      <ul v-if="importResult.errors.length" class="error-list">
+        <li v-for="e in importResult.errors" :key="e.row">第 {{ e.row }} 行：{{ e.reason }}</li>
+      </ul>
+    </div>
+    <p class="hint-tip">导入格式与导出一致（可先导出作模板）：主送/抄送/密送列填「是」表示勾选；同一项目下同名关联人会自动跳过。</p>
 
     <div class="card table-card">
       <table>
@@ -120,6 +132,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { api } from '../api.js';
+import { exportContacts } from '../contactExcel.js';
 
 const contacts = ref([]);
 const editing = ref(null);
@@ -128,6 +141,9 @@ const formError = ref('');
 const keyword = ref('');
 const candidates = ref([]);
 const options = ref({ depts: [], rooms: [] });
+const fileInput = ref(null);
+const importing = ref(false);
+const importResult = ref(null);
 
 async function load() {
   try {
@@ -246,6 +262,32 @@ async function remove(c) {
   }
 }
 
+async function onImport(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  importing.value = true;
+  importResult.value = null;
+  error.value = '';
+  try {
+    importResult.value = await api.importContacts(file);
+    await load();
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    importing.value = false;
+  }
+}
+
+async function doExport() {
+  error.value = '';
+  try {
+    await exportContacts(contacts.value);
+  } catch (e) {
+    error.value = `导出失败：${e.message}`;
+  }
+}
+
 onMounted(async () => {
   await load();
   try {
@@ -258,6 +300,11 @@ onMounted(async () => {
 
 <style scoped>
 .table-card { padding: 8px 0; }
+.toolbar { display: flex; gap: 12px; }
+.import-result { margin: 0 0 12px; }
+.ok-tip { font-size: 14px; color: #16a34a; margin: 0; }
+.error-list { margin: 4px 0 0; padding-left: 20px; color: var(--ruby); font-size: 13px; }
+.hint-tip { font-size: 12px; color: var(--ink-mute); margin: 0 0 12px; }
 .table-card table { text-align: center; }
 .table-card th, .table-card td { text-align: center; }
 .proj-name-cell { max-width: 200px; }
