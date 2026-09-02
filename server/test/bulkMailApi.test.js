@@ -55,8 +55,9 @@ describe('批量邮件模板', () => {
     expect(def.status).toBe(200);
     expect(def.body.template.subject).toContain('{{项目名称}}');
     expect(def.body.template.body).toContain('{{周进展}}');
+    expect(def.body.template.card).toContain('建设内容：{{建设内容}}');
 
-    const tpl = { subject: '主题 {{项目编码}}', body: '正文 {{周进展}}', signature: '签名 {{工程责任人}}' };
+    const tpl = { subject: '主题 {{项目编码}}', card: '名称：{{项目名称}}\n编码：{{项目编码}}', body: '正文 {{周进展}}', signature: '签名 {{工程责任人}}' };
     const saved = await request(createApp()).put('/api/bulk-mail/template').send(tpl);
     expect(saved.status).toBe(200);
     const after = await request(createApp()).get('/api/bulk-mail/template');
@@ -138,6 +139,31 @@ describe('批量邮件项目列表与预览', () => {
       '通用甲<g1@x.com>',
       '通用丙<a@x.com>',
     ]);
+  });
+
+  it('信息卡片可在模板中配置：自定义行与顺序生效，留空则不渲染卡片', async () => {
+    const app = createApp();
+    // 自定义卡片：只保留两行且换序
+    await request(app).put('/api/bulk-mail/template').send({
+      subject: '【项目进展通报】{{项目名称}}',
+      card: '编码：{{项目编码}}\n金额：{{立项金额}}万元',
+      body: '进展：{{周进展}}',
+      signature: '签名',
+    });
+    const res = await request(app).get('/api/bulk-mail/preview/P001');
+    const html = res.body.mail.html;
+    expect(html).toContain('编码');
+    expect(html).toContain('P001');
+    expect(html).toContain('320万元');
+    expect(html).not.toContain('项目阶段');
+    expect(html.indexOf('编码')).toBeLessThan(html.indexOf('金额'));
+
+    // 卡片留空 → 不渲染卡片
+    await request(app).put('/api/bulk-mail/template').send({
+      subject: 's', card: '', body: 'b', signature: 'g',
+    });
+    const res2 = await request(app).get('/api/bulk-mail/preview/P001');
+    expect(res2.body.mail.html).not.toContain('项目编码');
   });
 
   it('预览：无进展显示「本周暂无进展」；责任人不在人员配置中则联系方式为空', async () => {

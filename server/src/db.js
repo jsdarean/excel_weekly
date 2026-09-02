@@ -177,14 +177,23 @@ export async function initDatabase() {
     from_addr VARCHAR(128),
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
-  // 批量邮件模板（单行，id 固定为 1）：主题/正文/签名，均支持 {{占位符}}
+  // 批量邮件模板（单行，id 固定为 1）：主题/信息卡片/正文/签名，均支持 {{占位符}}
   await p.query(`CREATE TABLE IF NOT EXISTS mail_template (
     id INT PRIMARY KEY,
     subject VARCHAR(255),
+    card MEDIUMTEXT,
     body MEDIUMTEXT,
     signature MEDIUMTEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：信息卡片模板列
+  const [cardCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mail_template' AND column_name = 'card'`
+  );
+  if (cardCol.length === 0) {
+    await p.query('ALTER TABLE mail_template ADD COLUMN card MEDIUMTEXT AFTER subject');
+  }
   // 批量邮件发送记录
   await p.query(`CREATE TABLE IF NOT EXISTS mail_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,

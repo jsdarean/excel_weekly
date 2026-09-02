@@ -3,6 +3,13 @@ import { getPool } from './db.js';
 
 export const DEFAULT_TEMPLATE = {
   subject: '【项目进展通报】{{项目名称}}（{{周报日期}}）',
+  card: `项目名称：{{项目名称}}
+项目编码：{{项目编码}}
+建设内容：{{建设内容}}
+立项金额（万元）：{{立项金额}}
+项目阶段：{{项目阶段}}
+工程责任人：{{工程责任人}}
+周报日期：{{周报日期}}`,
   body: `各位领导、同事：
 
 您好！现将您所关注项目的本周进展通报如下。
@@ -16,20 +23,22 @@ export const DEFAULT_TEMPLATE = {
 
 // 读取模板；未保存过时返回默认模板（不落库）
 export async function getTemplate() {
-  const [rows] = await getPool().query('SELECT subject, body, signature FROM mail_template WHERE id = 1');
+  const [rows] = await getPool().query('SELECT subject, card, body, signature FROM mail_template WHERE id = 1');
   if (!rows.length) return { ...DEFAULT_TEMPLATE };
   return {
     subject: rows[0].subject ?? '',
+    // 旧数据 card 为 NULL（未配置过）时回退默认卡片；用户明确保存为空字符串则表示不显示卡片
+    card: rows[0].card ?? DEFAULT_TEMPLATE.card,
     body: rows[0].body ?? '',
     signature: rows[0].signature ?? '',
   };
 }
 
-export async function saveTemplate({ subject, body, signature }) {
+export async function saveTemplate({ subject, card, body, signature }) {
   await getPool().query(
-    `INSERT INTO mail_template (id, subject, body, signature) VALUES (1, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE subject = VALUES(subject), body = VALUES(body), signature = VALUES(signature)`,
-    [subject, body, signature]
+    `INSERT INTO mail_template (id, subject, card, body, signature) VALUES (1, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE subject = VALUES(subject), card = VALUES(card), body = VALUES(body), signature = VALUES(signature)`,
+    [subject, card, body, signature]
   );
 }
 
@@ -60,10 +69,22 @@ function textToParagraphs(text) {
 }
 
 // 商务风格 HTML 外壳（全部内联样式，兼容主流邮件客户端）
-export function buildHtmlEmail({ projectName, projectCode, content, budgetWan, stage, owner, reportDate, bodyText, signatureText }) {
+// cardRows：信息卡片行 [{label, value}]，空数组则不渲染卡片
+export function buildHtmlEmail({ cardRows, bodyText, signatureText }) {
   const metaRow = (label, value) =>
-    `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${label}</td>` +
+    `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>` +
     `<td style="padding:6px 0;color:#111827;font-size:13px;">${escapeHtml(value)}</td></tr>`;
+  const cardHtml = cardRows.length
+    ? `<table style="border-collapse:collapse;background:#f9fafb;border:1px solid #eef0f2;border-radius:6px;width:100%;margin-bottom:20px;" cellpadding="0" cellspacing="0">
+      <tbody style="display:table-row-group;">
+        <tr><td style="padding:12px 16px;" colspan="2">
+          <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody>
+            ${cardRows.map((r) => metaRow(r.label, r.value)).join('')}
+          </tbody></table>
+        </td></tr>
+      </tbody>
+    </table>`
+    : '';
   return `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#f3f4f6;">
 <div style="max-width:640px;margin:0 auto;padding:24px 16px;font-family:'Microsoft YaHei','PingFang SC',Arial,sans-serif;">
@@ -72,21 +93,7 @@ export function buildHtmlEmail({ projectName, projectCode, content, budgetWan, s
     <div style="color:rgba(255,255,255,0.75);font-size:12px;margin-top:4px;">工程建设部 · 核心网室</div>
   </div>
   <div style="background:#ffffff;border:1px solid #e5e7eb;border-top:none;padding:24px 28px;">
-    <table style="border-collapse:collapse;background:#f9fafb;border:1px solid #eef0f2;border-radius:6px;width:100%;margin-bottom:20px;" cellpadding="0" cellspacing="0">
-      <tbody style="display:table-row-group;">
-        <tr><td style="padding:12px 16px;" colspan="2">
-          <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody>
-            ${metaRow('项目名称', projectName)}
-            ${metaRow('项目编码', projectCode)}
-            ${metaRow('建设内容', content)}
-            ${metaRow('立项金额（万元）', budgetWan)}
-            ${metaRow('项目阶段', stage)}
-            ${metaRow('工程责任人', owner)}
-            ${metaRow('周报日期', reportDate)}
-          </tbody></table>
-        </td></tr>
-      </tbody>
-    </table>
+    ${cardHtml}
     <div style="color:#1f2937;font-size:14px;line-height:1.9;">
       ${textToParagraphs(bodyText)}
     </div>
@@ -178,20 +185,39 @@ export async function buildMailData(pool, projectCode) {
       '项目编码': p.project_code,
       '周进展': progress,
       '建设内容': p.content || '',
+      '立项金额': p.budget_wan === null || p.budget_wan === undefined ? '' : String(Number(p.budget_wan)),
+      '项目阶段': p.stage || '',
       '工程责任人': p.owner || '',
       '责任人电话': ownerPhone,
       '责任人邮箱': ownerEmail,
       '周报日期': latest ? latest.report_date : '',
     },
     reportDate: latest ? latest.report_date : null,
-    budgetWan: p.budget_wan === null || p.budget_wan === undefined ? '' : String(Number(p.budget_wan)),
-    stage: p.stage || '',
     to: contactTo.map(fmtAddr),
     cc: cc.map(fmtAddr),
     bcc: contactBcc.map(fmtAddr),
     // 是否有关联人勾选的收件人（不含默认追加的领导/责任人抄送），决定项目可否发送
     hasContactRecipients: contactTo.length + contactCc.length + contactBcc.length > 0,
   };
+}
+
+// 解析信息卡片模板：每行一条「标签：值」，值支持占位符；空行忽略
+export function parseCardTemplate(cardText, placeholders) {
+  const rows = [];
+  for (const line of String(cardText ?? '').split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const sep = t.search(/[：:]/);
+    if (sep < 0) {
+      rows.push({ label: '', value: renderPlaceholders(t, placeholders) });
+    } else {
+      rows.push({
+        label: t.slice(0, sep).trim(),
+        value: renderPlaceholders(t.slice(sep + 1).trim(), placeholders),
+      });
+    }
+  }
+  return rows;
 }
 
 // 渲染某项目的完整邮件（主题/纯文本/HTML/收件人）
@@ -202,17 +228,8 @@ export async function renderProjectMail(pool, projectCode) {
   const subject = renderPlaceholders(tpl.subject, data.placeholders);
   const bodyText = renderPlaceholders(tpl.body, data.placeholders);
   const signatureText = renderPlaceholders(tpl.signature, data.placeholders);
-  const html = buildHtmlEmail({
-    projectName: data.placeholders['项目名称'],
-    projectCode: data.projectCode,
-    content: data.placeholders['建设内容'],
-    budgetWan: data.budgetWan,
-    stage: data.stage,
-    owner: data.placeholders['工程责任人'],
-    reportDate: data.reportDate || '',
-    bodyText,
-    signatureText,
-  });
+  const cardRows = parseCardTemplate(tpl.card, data.placeholders);
+  const html = buildHtmlEmail({ cardRows, bodyText, signatureText });
   return {
     projectCode: data.projectCode,
     reportDate: data.reportDate,

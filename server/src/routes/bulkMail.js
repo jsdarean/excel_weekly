@@ -21,11 +21,12 @@ router.put('/template', async (req, res) => {
   try {
     const b = req.body ?? {};
     const subject = String(b.subject ?? '').trim();
+    const card = String(b.card ?? '').trim();
     const body = String(b.body ?? '').trim();
     const signature = String(b.signature ?? '').trim();
     if (!subject) return res.status(400).json({ error: '邮件主题不能为空' });
     if (!body) return res.status(400).json({ error: '邮件正文不能为空' });
-    await saveTemplate({ subject, body, signature });
+    await saveTemplate({ subject, card, body, signature });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: `保存失败：${e.message}` });

@@ -1,8 +1,8 @@
 <template>
   <div>
-    <h2>人员配置</h2>
+    <h2>工程责任人</h2>
     <p class="toolbar">
-      <button class="primary" @click="openForm(null)">新增人员</button>
+      <button class="primary" @click="openForm(null)">新增责任人</button>
       <button :disabled="importing" @click="fileInput.click()">{{ importing ? '导入中…' : '导入 Excel' }}</button>
       <button :disabled="!persons.length" @click="doExport">导出 Excel</button>
       <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onImport" />
@@ -41,7 +41,7 @@
 
     <div v-if="editing" class="modal">
       <div class="dialog">
-        <h3>{{ editing.id ? '编辑人员' : '新增人员' }}</h3>
+        <h3>{{ editing.id ? '编辑责任人' : '新增责任人' }}</h3>
         <label>姓名 <input type="text" v-model="editing.name" /></label>
         <label>职务
           <select v-model="editing.title">

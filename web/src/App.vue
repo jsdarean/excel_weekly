@@ -5,11 +5,12 @@
       <router-link to="/">项目列表</router-link>
       <router-link to="/watched">关注项目</router-link>
       <router-link to="/report">周报管理</router-link>
+      <router-link to="/bulk-mail">批量邮件</router-link>
       <router-link to="/stats">项目统计</router-link>
       <router-link to="/import">数据导入</router-link>
-      <router-link to="/persons">人员配置</router-link>
+      <span class="nav-sep"></span>
+      <router-link to="/persons">工程责任人</router-link>
       <router-link to="/contacts">项目关联人</router-link>
-      <router-link to="/bulk-mail">批量邮件</router-link>
       <router-link to="/email-config">邮箱配置</router-link>
     </nav>
     <main class="page">
@@ -53,6 +54,14 @@
 .nav a.router-link-active {
   color: var(--primary-press);
   border-bottom: 2px solid var(--primary-press);
+}
+/* 工作区与设置区的分隔 */
+.nav-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--ink-mute);
+  opacity: 0.5;
+  margin: 0 4px;
 }
 
 .page {

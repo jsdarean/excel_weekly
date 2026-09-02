@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 
-// 人员配置导出：列与导入模板一致（姓名/职务/电话/短号/邮箱）
+// 工程责任人导出：列与导入模板一致（姓名/职务/电话/短号/邮箱）
 const HEADER = ['姓名', '职务', '电话', '短号', '邮箱'];
 const COL_WIDTHS = [12, 10, 14, 10, 30];
 
@@ -18,7 +18,7 @@ export function buildPersonsData(persons) {
 export async function exportPersons(persons) {
   const aoa = buildPersonsData(persons);
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('人员配置');
+  const ws = wb.addWorksheet('工程责任人');
   ws.columns = COL_WIDTHS.map((w) => ({ width: w }));
 
   const border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
@@ -42,7 +42,7 @@ export async function exportPersons(persons) {
   const d = new Date();
   const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   a.href = url;
-  a.download = `人员配置${dateStr}.xlsx`;
+  a.download = `工程责任人${dateStr}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }

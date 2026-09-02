@@ -9,6 +9,9 @@
       <label>邮件主题
         <input type="text" v-model="tpl.subject" />
       </label>
+      <label>信息卡片（每行一条「标签：值」，留空则不显示卡片）
+        <textarea v-model="tpl.card" rows="7"></textarea>
+      </label>
       <label>邮件正文
         <textarea v-model="tpl.body" rows="10"></textarea>
       </label>
@@ -150,7 +153,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api.js';
 
-const placeholders = '{{项目名称}} {{项目编码}} {{周进展}} {{建设内容}} {{工程责任人}} {{责任人电话}} {{责任人邮箱}} {{周报日期}}';
+const placeholders = '{{项目名称}} {{项目编码}} {{周进展}} {{建设内容}} {{立项金额}} {{项目阶段}} {{工程责任人}} {{责任人电话}} {{责任人邮箱}} {{周报日期}}';
 
 const tpl = ref({ subject: '', body: '', signature: '' });
 const projects = ref([]);
