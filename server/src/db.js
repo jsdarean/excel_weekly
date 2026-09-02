@@ -198,4 +198,13 @@ export async function initDatabase() {
     error TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  // 批量邮件通用抄送人（按 sort_order 排序，enabled=0 暂停全量抄送）
+  await p.query(`CREATE TABLE IF NOT EXISTS mail_cc_list (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    email VARCHAR(128) NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
 }

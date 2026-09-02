@@ -23,6 +23,35 @@
       </div>
     </div>
 
+    <!-- 通用抄送人配置 -->
+    <div class="card">
+      <h3>通用抄送人</h3>
+      <p class="hint">每封邮件的抄送 = 项目关联人勾选的抄送 + 此处开启「全量抄送」的人（按下方顺序）+ 该项目工程责任人。修改后点「保存」生效。</p>
+      <table v-if="ccList.length" class="cc-table">
+        <thead>
+          <tr><th>姓名</th><th>邮箱</th><th>全量抄送</th><th>顺序</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="(c, i) in ccList" :key="i">
+            <td><input type="text" v-model="c.name" placeholder="姓名" /></td>
+            <td><input type="text" v-model="c.email" placeholder="邮箱" class="email-input" /></td>
+            <td class="center"><input type="checkbox" v-model="c.enabled" /></td>
+            <td class="center nowrap">
+              <button class="link-btn" :disabled="i === 0" @click="moveCc(i, -1)">↑</button>
+              <button class="link-btn" :disabled="i === ccList.length - 1" @click="moveCc(i, 1)">↓</button>
+            </td>
+            <td class="center"><button class="link-btn danger" @click="ccList.splice(i, 1)">删除</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="hint">暂无通用抄送人。</p>
+      <div class="actions">
+        <button @click="ccList.push({ name: '', email: '', enabled: true })">+ 添加</button>
+        <button class="primary" :disabled="savingCc" @click="saveCc">{{ savingCc ? '保存中…' : (ccSavedTip || '保存') }}</button>
+      </div>
+      <p v-if="ccError" class="error">{{ ccError }}</p>
+    </div>
+
     <!-- 可发送项目列表 -->
     <div class="card">
       <h3>待发送项目（按项目一封，主送/抄送/密送自动分组）</h3>
@@ -126,9 +155,13 @@ const placeholders = '{{项目名称}} {{项目编码}} {{周进展}} {{建设�
 const tpl = ref({ subject: '', body: '', signature: '' });
 const projects = ref([]);
 const logs = ref([]);
+const ccList = ref([]);
 const error = ref('');
 const savingTpl = ref(false);
 const tplSavedTip = ref('');
+const savingCc = ref(false);
+const ccSavedTip = ref('');
+const ccError = ref('');
 
 const preview = ref(null); // 当前预览的邮件
 const sending = ref(false);
@@ -143,16 +176,43 @@ const hasNext = computed(() => {
 async function load() {
   error.value = '';
   try {
-    const [t, p, l] = await Promise.all([
+    const [t, p, l, cc] = await Promise.all([
       api.getMailTemplate(),
       api.getMailProjects(),
       api.getMailLogs(),
+      api.getMailCcList(),
     ]);
     tpl.value = t.template;
     projects.value = p.projects;
     logs.value = l.logs;
+    ccList.value = cc.list.map((r) => ({ name: r.name, email: r.email, enabled: !!r.enabled }));
   } catch (e) {
     error.value = e.message;
+  }
+}
+
+function moveCc(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= ccList.value.length) return;
+  const tmp = ccList.value[i];
+  ccList.value[i] = ccList.value[j];
+  ccList.value[j] = tmp;
+}
+
+async function saveCc() {
+  savingCc.value = true;
+  ccError.value = '';
+  try {
+    await api.saveMailCcList(ccList.value);
+    ccSavedTip.value = '已保存';
+    setTimeout(() => { ccSavedTip.value = ''; }, 2000);
+    // 抄送名单变化会影响待发送项目的统计
+    const p = await api.getMailProjects();
+    projects.value = p.projects;
+  } catch (e) {
+    ccError.value = e.message;
+  } finally {
+    savingCc.value = false;
   }
 }
 
@@ -303,4 +363,30 @@ onMounted(load);
 }
 .modal-actions { display: flex; gap: 12px; }
 .ok-tip { font-size: 14px; color: #16a34a; margin: 0 0 8px; }
+
+/* 通用抄送人表格 */
+.cc-table { margin-bottom: 12px; }
+.cc-table input[type='text'] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.cc-table .email-input { min-width: 280px; }
+.center { text-align: center; }
+
+/* 文字链接式按钮 */
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+}
+.link-btn:hover:not(:disabled) { text-decoration: underline; }
+.link-btn:disabled { color: var(--ink-mute); cursor: default; }
+.link-btn.danger { color: #dc2626; }
 </style>

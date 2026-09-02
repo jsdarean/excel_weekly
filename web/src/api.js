@@ -141,6 +141,13 @@ export const api = {
       body: JSON.stringify({ projectCode: code }),
     }),
   getMailLogs: () => request('/api/bulk-mail/logs'),
+  getMailCcList: () => request('/api/bulk-mail/cc-list'),
+  saveMailCcList: (list) =>
+    request('/api/bulk-mail/cc-list', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ list }),
+    }),
   getReportTemplates: () => request('/api/report-templates'),
   createReportTemplate: (name, content) =>
     request('/api/report-templates', {

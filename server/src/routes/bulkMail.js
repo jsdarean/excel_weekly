@@ -32,6 +32,60 @@ router.put('/template', async (req, res) => {
   }
 });
 
+// 通用抄送人列表
+router.get('/cc-list', async (req, res) => {
+  try {
+    const [rows] = await getPool().query(
+      'SELECT id, name, email, enabled, sort_order FROM mail_cc_list ORDER BY sort_order, id'
+    );
+    res.json({ list: rows });
+  } catch (e) {
+    res.status(500).json({ error: `查询失败：${e.message}` });
+  }
+});
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// 整体保存通用抄送人（录入/修改/删除/调序一次提交，数组顺序即显示顺序）
+router.put('/cc-list', async (req, res) => {
+  try {
+    const list = req.body?.list;
+    if (!Array.isArray(list)) return res.status(400).json({ error: 'list 必须是数组' });
+    const seen = new Set();
+    const rows = [];
+    for (let i = 0; i < list.length; i++) {
+      const name = String(list[i]?.name ?? '').trim();
+      const email = String(list[i]?.email ?? '').trim();
+      if (!name) return res.status(400).json({ error: `第 ${i + 1} 行：姓名不能为空` });
+      if (!EMAIL_RE.test(email)) return res.status(400).json({ error: `第 ${i + 1} 行：邮箱格式不正确` });
+      if (seen.has(email)) return res.status(400).json({ error: `邮箱重复：${email}` });
+      seen.add(email);
+      rows.push([name, email, list[i].enabled ? 1 : 0, i + 1]);
+    }
+    const pool = getPool();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM mail_cc_list');
+      for (const r of rows) {
+        await conn.query(
+          'INSERT INTO mail_cc_list (name, email, enabled, sort_order) VALUES (?, ?, ?, ?)',
+          r
+        );
+      }
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: `保存失败：${e.message}` });
+  }
+});
+
 // 可发送项目列表（有勾选收件人的项目）
 router.get('/projects', async (req, res) => {
   try {

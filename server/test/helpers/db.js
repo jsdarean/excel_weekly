@@ -13,4 +13,5 @@ export async function resetDb() {
   await pool.query('DELETE FROM email_config');
   await pool.query('DELETE FROM mail_logs');
   await pool.query('DELETE FROM mail_template');
+  await pool.query('DELETE FROM mail_cc_list');
 }

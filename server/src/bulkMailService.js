@@ -104,23 +104,21 @@ function fmtAddr(a) {
   return a.name ? `${a.name}<${a.email}>` : a.email;
 }
 
-// 抄送默认追加：人员配置中职务为 总经理/副总/室经理 的人员（按职务顺序）
-async function getLeaderContacts(pool) {
+// 通用抄送人：批量邮件页配置的名单（enabled=1，按 sort_order 排序）
+async function getGlobalCc(pool) {
   const [rows] = await pool.query(
-    `SELECT name, email FROM persons
-     WHERE title IN ('总经理', '副总', '室经理') AND email IS NOT NULL AND email <> ''
-     ORDER BY FIELD(title, '总经理', '副总', '室经理'), id`
+    'SELECT name, email FROM mail_cc_list WHERE enabled = 1 ORDER BY sort_order, id'
   );
   return rows;
 }
 
-// 抄送列表 = 关联人勾选抄送 + 总经理/副总/室经理 + 工程责任人（均为 {name, email}）；
+// 抄送列表 = 关联人勾选抄送 + 通用抄送人 + 工程责任人（均为 {name, email}）；
 // 按邮箱去重，且已在主送中的地址不再重复抄送
-export function buildCcList(contactCc, leaders, owner, contactTo) {
+export function buildCcList(contactCc, globalCc, owner, contactTo) {
   const toSet = new Set(contactTo.map((a) => a.email));
   const seen = new Set();
   const out = [];
-  for (const a of [...contactCc, ...leaders, owner]) {
+  for (const a of [...contactCc, ...globalCc, owner]) {
     if (!a || !a.email || seen.has(a.email) || toSet.has(a.email)) continue;
     seen.add(a.email);
     out.push(a);
@@ -164,13 +162,13 @@ export async function buildMailData(pool, projectCode) {
     [projectCode]
   );
 
-  // 抄送默认追加：人员配置中职务为 总经理/副总/室经理 的人员 + 本项目工程责任人
-  const leaders = await getLeaderContacts(pool);
+  // 抄送默认追加：通用抄送人 + 本项目工程责任人（排最后）
+  const globalCc = await getGlobalCc(pool);
   const contactTo = contacts.filter((c) => c.send_to);
   const contactCc = contacts.filter((c) => c.send_cc);
   const contactBcc = contacts.filter((c) => c.send_bcc);
   const owner = { name: p.owner || '', email: ownerEmail };
-  const cc = buildCcList(contactCc, leaders, owner, contactTo);
+  const cc = buildCcList(contactCc, globalCc, owner, contactTo);
 
   const progress = latest && String(latest.progress ?? '').trim() ? latest.progress.trim() : '本周暂无进展';
   return {
@@ -257,7 +255,7 @@ export async function listMailProjects(pool) {
       if (r.email) ownerEmails.set(r.name, r.email);
     }
   }
-  const leaderContacts = await getLeaderContacts(pool);
+  const globalCc = await getGlobalCc(pool);
   // 标记每个项目最新进展周是否已成功发送过
   const [logs] = await pool.query(
     "SELECT project_code, report_date FROM mail_logs WHERE status = 'success'"
@@ -275,7 +273,7 @@ export async function listMailProjects(pool) {
     const contactCc = list.filter((c) => c.send_cc);
     const bcc = list.filter((c) => c.send_bcc);
     const owner = { name: r.owner || '', email: ownerEmails.get(r.owner) || '' };
-    const cc = buildCcList(contactCc, leaderContacts, owner, to);
+    const cc = buildCcList(contactCc, globalCc, owner, to);
     return {
       projectCode: r.project_code,
       projectName: r.project_name,

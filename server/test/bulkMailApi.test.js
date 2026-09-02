@@ -37,6 +37,14 @@ async function seed() {
             ('P002', '收件人E', 'e@x.com', 1, 0, 0),
             ('P003', '不发送F', 'f@x.com', 0, 0, 0)`
   );
+  // 通用抄送人：乙（与 P001 关联人抄送重复）、甲、丙（与 P001 主送重复）、丁（停用）
+  await pool.query(
+    `INSERT INTO mail_cc_list (name, email, enabled, sort_order)
+     VALUES ('通用乙', 'b@x.com', 1, 1),
+            ('通用甲', 'g1@x.com', 1, 2),
+            ('通用丙', 'a@x.com', 1, 3),
+            ('通用丁', 'off@x.com', 0, 4)`
+  );
 }
 
 describe('批量邮件模板', () => {
@@ -72,12 +80,12 @@ describe('批量邮件项目列表与预览', () => {
     expect(codes).toEqual(['P001', 'P002']); // P003 无人勾选，不出现
     const p1 = res.body.projects[0];
     expect(p1.toCount).toBe(1);
-    // 抄送统计含默认追加：关联人抄送1 + 总经理1 + 室经理1 + 工程责任人1（副总邮箱与主送重复被剔除）
-    expect(p1.ccCount).toBe(4);
+    // 抄送统计 = 关联人抄送1(b) + 通用抄送（甲 g1；乙与关联人重复、丙与主送重复、丁停用）+ 工程责任人1
+    expect(p1.ccCount).toBe(3);
     expect(p1.bccCount).toBe(1);
     expect(p1.reportDate).toBe('2026-08-21');
     expect(p1.sentThisWeek).toBe(false);
-    // P002：主送 e@x.com；默认抄送 总经理qz + 副总a + 室经理zm（李四不在人员配置中，无邮箱）
+    // P002：主送 e@x.com；抄送 = 通用乙(b) + 通用甲(g1) + 通用丙(a)（李四不在人员配置中，无邮箱）
     const p2 = res.body.projects.find((p) => p.projectCode === 'P002');
     expect(p2.toCount).toBe(1);
     expect(p2.ccCount).toBe(3);
@@ -112,17 +120,24 @@ describe('批量邮件项目列表与预览', () => {
     expect(m.html.indexOf('项目编码')).toBeLessThan(m.html.indexOf('建设内容'));
     expect(m.html.indexOf('建设内容')).toBeLessThan(m.html.indexOf('立项金额'));
     expect(m.to).toEqual(['收件人A<a@x.com>']);
-    // 抄送顺序：关联人勾选(b) → 总经理(qz) → 副总(a，已在主送中剔除) → 室经理(zm) → 工程责任人(zhangsan)
-    // 无职务/无邮箱人员不加入（注意赵经理虽先插入，但总经理必须排在室经理前）
-    // 收件人格式为 姓名<邮箱>
+    // 抄送顺序：关联人勾选 → 通用抄送人（按配置顺序，乙与关联人重复剔除、丙与主送重复剔除、丁停用）→ 工程责任人
     expect(m.cc).toEqual([
       '收件人B<b@x.com>',
-      '钱总<qz@x.com>',
-      '赵经理<zm@x.com>',
+      '通用甲<g1@x.com>',
       '张三<zhangsan@js.chinamobile.com>',
     ]);
     expect(m.bcc).toEqual(['收件人C<c@x.com>']);
     expect(m.reportDate).toBe('2026-08-21');
+  });
+
+  it('预览 P002：通用抄送人按 sort_order 排序（乙在甲前）', async () => {
+    const res = await request(createApp()).get('/api/bulk-mail/preview/P002');
+    expect(res.status).toBe(200);
+    expect(res.body.mail.cc).toEqual([
+      '通用乙<b@x.com>',
+      '通用甲<g1@x.com>',
+      '通用丙<a@x.com>',
+    ]);
   });
 
   it('预览：无进展显示「本周暂无进展」；责任人不在人员配置中则联系方式为空', async () => {
@@ -179,5 +194,64 @@ describe('批量邮件发送与记录', () => {
     expect(log.error).toBeTruthy();
     expect(log.to_addr).toBe('收件人A<a@x.com>');
     expect(log.subject).toContain('智算X节点工程');
+  });
+});
+
+describe('通用抄送人配置', () => {
+  beforeEach(resetDb);
+
+  it('整体保存：录入/修改/删除/调序一次提交，按 sort_order 返回；停用的保留但不参与抄送', async () => {
+    const app = createApp();
+    const empty = await request(app).get('/api/bulk-mail/cc-list');
+    expect(empty.body.list).toEqual([]);
+
+    // 保存 3 人（顺序即提交顺序）
+    const saved = await request(app).put('/api/bulk-mail/cc-list').send({
+      list: [
+        { name: '张三', email: 'zs@x.com', enabled: true },
+        { name: '李四', email: 'ls@x.com', enabled: false },
+        { name: '王五', email: 'ww@x.com', enabled: true },
+      ],
+    });
+    expect(saved.status).toBe(200);
+    const got = await request(app).get('/api/bulk-mail/cc-list');
+    expect(got.body.list.map((r) => [r.name, r.email, r.enabled])).toEqual([
+      ['张三', 'zs@x.com', 1],
+      ['李四', 'ls@x.com', 0],
+      ['王五', 'ww@x.com', 1],
+    ]);
+
+    // 修改 + 删除 + 调序：删掉李四，王五提到最前，张三改邮箱
+    const updated = await request(app).put('/api/bulk-mail/cc-list').send({
+      list: [
+        { name: '王五', email: 'ww@x.com', enabled: true },
+        { name: '张三', email: 'zs2@x.com', enabled: true },
+      ],
+    });
+    expect(updated.status).toBe(200);
+    const got2 = await request(app).get('/api/bulk-mail/cc-list');
+    expect(got2.body.list.map((r) => r.email)).toEqual(['ww@x.com', 'zs2@x.com']);
+  });
+
+  it('姓名/邮箱为空或邮箱格式非法返回 400；重复邮箱返回 400', async () => {
+    const app = createApp();
+    const noName = await request(app).put('/api/bulk-mail/cc-list').send({
+      list: [{ name: '', email: 'a@x.com', enabled: true }],
+    });
+    expect(noName.status).toBe(400);
+    const badEmail = await request(app).put('/api/bulk-mail/cc-list').send({
+      list: [{ name: '张三', email: 'not-an-email', enabled: true }],
+    });
+    expect(badEmail.status).toBe(400);
+    const dup = await request(app).put('/api/bulk-mail/cc-list').send({
+      list: [
+        { name: '张三', email: 'a@x.com', enabled: true },
+        { name: '李四', email: 'a@x.com', enabled: true },
+      ],
+    });
+    expect(dup.status).toBe(400);
+    // 校验失败不应写入
+    const got = await request(app).get('/api/bulk-mail/cc-list');
+    expect(got.body.list).toEqual([]);
   });
 });
