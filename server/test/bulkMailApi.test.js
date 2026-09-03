@@ -4,6 +4,19 @@ import { createApp } from '../src/app.js';
 import { getPool } from '../src/db.js';
 import { resetDb } from './helpers/db.js';
 import { encryptText } from '../src/utils/crypto.js';
+import { buildHtmlEmail } from '../src/bulkMailService.js';
+
+describe('buildHtmlEmail 页头', () => {
+  it('移动蓝到白色的左→右渐变；hasLogo 时含 CID 图片，否则不含', () => {
+    const base = { cardRows: [], bodyText: '正文', signatureText: '签名' };
+    const noLogo = buildHtmlEmail(base);
+    expect(noLogo).toContain('linear-gradient(90deg,#0086d4');
+    expect(noLogo).not.toContain('cid:cmcc-logo');
+    const withLogo = buildHtmlEmail({ ...base, hasLogo: true });
+    expect(withLogo).toContain('src="cid:cmcc-logo"');
+    expect(withLogo).toContain('中国移动');
+  });
+});
 
 async function seed() {
   const pool = getPool();

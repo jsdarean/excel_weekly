@@ -77,8 +77,8 @@ router.post('/test', async (req, res) => {
     try {
       await sendAndArchive(config, {
         to,
-        subject: '【工程周报】邮箱配置测试邮件',
-        text: `这是一封来自工程周报管理系统的测试邮件，用于验证 SMTP 发送与 IMAP 已发送存档。\n\n发送时间（北京时间）：${now}\n\n如收到本邮件，说明邮箱配置可用。`,
+        subject: '【工程进展数智管理系统】邮箱配置测试邮件',
+        text: `这是一封来自工程进展数智管理系统的测试邮件，用于验证 SMTP 发送与 IMAP 已发送存档。\n\n发送时间（北京时间）：${now}\n\n如收到本邮件，说明邮箱配置可用。`,
       });
       res.json({ ok: true, message: `发送成功，已存档到「已发送」（北京时间 ${now}）` });
     } catch (e) {

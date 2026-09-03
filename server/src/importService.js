@@ -6,6 +6,14 @@ export async function hasProgressForDate(pool, reportDate) {
   return rows.length > 0;
 }
 
+// 周进展规范化：去除首尾空白；末尾没有结束标点（。！？；.!?;）时补句号
+function normalizeProgress(text) {
+  if (text === null || text === undefined) return text;
+  const t = String(text).trim();
+  if (!t) return text;
+  return /[。！？；.!?;]$/.test(t) ? t : `${t}。`;
+}
+
 export async function importData(pool, parsed, reportDate) {
   const conn = await pool.getConnection();
   try {
@@ -58,7 +66,7 @@ export async function importData(pool, parsed, reportDate) {
            arrival_rate = VALUES(arrival_rate),
            online_handover = VALUES(online_handover),
            final_acceptance = VALUES(final_acceptance)`,
-        [w.projectCode, reportDate, w.progress, w.purchaseRate, w.disclosure,
+        [w.projectCode, reportDate, normalizeProgress(w.progress), w.purchaseRate, w.disclosure,
          w.arrivalRate, w.onlineHandover, w.finalAcceptance]
       );
       progressWritten++;

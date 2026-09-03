@@ -1,7 +1,7 @@
 <template>
   <div>
     <nav class="nav">
-      <span class="brand">工程周报管理</span>
+      <span class="brand">工程进展数智管理系统</span>
       <router-link to="/">项目列表</router-link>
       <router-link to="/watched">关注项目</router-link>
       <router-link to="/report">周报管理</router-link>

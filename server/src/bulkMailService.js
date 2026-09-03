@@ -1,5 +1,17 @@
 // 批量邮件：模板存取、占位符渲染、HTML 外壳、按项目组装邮件数据
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getPool } from './db.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 中国移动白色 LOGO：放在 server/assets/cmcc-logo-white.png 即启用（CID 附件嵌入邮件）
+export const LOGO_PATH = path.join(__dirname, '../assets/cmcc-logo-white.png');
+export const LOGO_CID = 'cmcc-logo';
+export function hasLogoFile() {
+  return fs.existsSync(LOGO_PATH);
+}
 
 export const DEFAULT_TEMPLATE = {
   subject: '【项目进展通报】{{项目名称}}（{{周报日期}}）',
@@ -70,7 +82,8 @@ function textToParagraphs(text) {
 
 // 商务风格 HTML 外壳（全部内联样式，兼容主流邮件客户端）
 // cardRows：信息卡片行 [{label, value}]，空数组则不渲染卡片
-export function buildHtmlEmail({ cardRows, bodyText, signatureText }) {
+// hasLogo：为 true 时页头左侧显示中国移动 LOGO（CID 附件，cid:cmcc-logo）
+export function buildHtmlEmail({ cardRows, bodyText, signatureText, hasLogo = false }) {
   const metaRow = (label, value) =>
     `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>` +
     `<td style="padding:6px 0;color:#111827;font-size:13px;">${escapeHtml(value)}</td></tr>`;
@@ -85,12 +98,20 @@ export function buildHtmlEmail({ cardRows, bodyText, signatureText }) {
       </tbody>
     </table>`
     : '';
+  const logoImg = hasLogo
+    ? `<img src="cid:cmcc-logo" alt="中国移动" style="height:32px;display:block;margin-right:12px;"/>`
+    : '';
   return `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#f3f4f6;">
 <div style="max-width:640px;margin:0 auto;padding:24px 16px;font-family:'Microsoft YaHei','PingFang SC',Arial,sans-serif;">
-  <div style="background:#1f4e79;border-radius:8px 8px 0 0;padding:20px 28px;">
-    <div style="color:#ffffff;font-size:18px;font-weight:bold;">项目进展通报</div>
-    <div style="color:rgba(255,255,255,0.75);font-size:12px;margin-top:4px;">工程建设部 · 核心网室</div>
+  <div style="background:#0086d4;background:linear-gradient(90deg,#0086d4 0%,#55b4e4 45%,#ffffff 100%);border-radius:8px 8px 0 0;padding:20px 28px;">
+    <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody><tr>
+      ${hasLogo ? `<td style="vertical-align:middle;">${logoImg}</td>` : ''}
+      <td style="vertical-align:middle;">
+        <div style="color:#ffffff;font-size:18px;font-weight:bold;">项目进展通报</div>
+        <div style="color:rgba(255,255,255,0.85);font-size:12px;margin-top:4px;">工程建设部 · 核心网室</div>
+      </td>
+    </tr></tbody></table>
   </div>
   <div style="background:#ffffff;border:1px solid #e5e7eb;border-top:none;padding:24px 28px;">
     ${cardHtml}
@@ -101,7 +122,7 @@ export function buildHtmlEmail({ cardRows, bodyText, signatureText }) {
       ${textToParagraphs(signatureText)}
     </div>
   </div>
-  <div style="padding:12px 8px;color:#9ca3af;font-size:12px;">本邮件由工程周报管理系统发送</div>
+  <div style="padding:12px 8px;color:#9ca3af;font-size:12px;">本邮件由工程进展数智管理系统发送</div>
 </div>
 </body></html>`;
 }
@@ -196,7 +217,7 @@ export async function buildMailData(pool, projectCode) {
     to: contactTo.map(fmtAddr),
     cc: cc.map(fmtAddr),
     bcc: contactBcc.map(fmtAddr),
-    // 是否有关联人勾选的收件人（不含默认追加的领导/责任人抄送），决定项目可否发送
+    // 是否有关联人勾选的收件人（不含默认追加的通用抄送/责任人），决定项目可否发送
     hasContactRecipients: contactTo.length + contactCc.length + contactBcc.length > 0,
   };
 }
@@ -229,13 +250,15 @@ export async function renderProjectMail(pool, projectCode) {
   const bodyText = renderPlaceholders(tpl.body, data.placeholders);
   const signatureText = renderPlaceholders(tpl.signature, data.placeholders);
   const cardRows = parseCardTemplate(tpl.card, data.placeholders);
-  const html = buildHtmlEmail({ cardRows, bodyText, signatureText });
+  const hasLogo = hasLogoFile();
+  const html = buildHtmlEmail({ cardRows, bodyText, signatureText, hasLogo });
   return {
     projectCode: data.projectCode,
     reportDate: data.reportDate,
     subject,
     text: `${bodyText}\n\n${signatureText}`,
     html,
+    hasLogo,
     to: data.to,
     cc: data.cc,
     bcc: data.bcc,

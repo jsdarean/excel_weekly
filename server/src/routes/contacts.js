@@ -136,7 +136,7 @@ router.get('/', async (req, res) => {
     const [rows] = await pool.query(
       `SELECT c.id, c.project_code, c.dept, c.room, c.role, c.name, c.email, c.phone,
               c.send_to, c.send_cc, c.send_bcc,
-              p.project_name, p.content
+              p.project_name, p.content, p.owner
        FROM project_contacts c
        LEFT JOIN projects p ON p.project_code = c.project_code
        ${where}

@@ -40,8 +40,8 @@ function fromHeader(config) {
 }
 
 // 发送邮件并存档到「已发送」；存档失败不影响发送结果，通过返回值体现
-// to/cc/bcc 均可传字符串或字符串数组
-export async function sendAndArchive(config, { to, cc, bcc, subject, text, html }) {
+// to/cc/bcc 均可传字符串或字符串数组；attachments 为 nodemailer 附件（如 CID 内嵌图片）
+export async function sendAndArchive(config, { to, cc, bcc, subject, text, html, attachments }) {
   const transporter = nodemailer.createTransport({
     host: config.smtpHost,
     port: config.smtpPort,
@@ -58,6 +58,7 @@ export async function sendAndArchive(config, { to, cc, bcc, subject, text, html 
   };
   if (cc && cc.length) message.cc = cc;
   if (bcc && bcc.length) message.bcc = bcc;
+  if (attachments && attachments.length) message.attachments = attachments;
   await transporter.sendMail(message);
   const raw = await new MailComposer(message).compile().build();
   const folder = await appendToSent(config, raw, message.date);

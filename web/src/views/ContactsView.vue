@@ -6,6 +6,10 @@
       <button :disabled="importing" @click="fileInput.click()">{{ importing ? '导入中…' : '导入 Excel' }}</button>
       <button :disabled="!contacts.length" @click="doExport">导出 Excel</button>
       <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onImport" />
+      <select v-model="selectedCode" class="filter-select" @change="onFilterChange">
+        <option value="">全部项目</option>
+        <option v-for="p in projectOptions" :key="p.code" :value="p.code">{{ p.name }}</option>
+      </select>
     </p>
     <p v-if="error" class="error">{{ error }}</p>
     <div v-if="importResult" class="import-result">
@@ -22,51 +26,60 @@
       <table>
         <thead>
           <tr>
-            <th>项目编码</th><th>项目名称</th>
             <th>部门</th><th>室</th><th>职务</th>
-            <th>姓名</th><th>邮箱</th><th>电话</th><th>主送</th><th>抄送</th><th>密送</th><th>操作</th>
+            <th>姓名</th><th>邮箱</th><th>电话</th>
+            <th>主送</th><th>抄送</th><th>密送</th><th>操作</th>
           </tr>
         </thead>
-        <tbody>
-          <tr v-for="c in contacts" :key="c.id">
-            <td class="num">{{ c.project_code }}</td>
-            <td class="proj-name-cell">
-              <div class="tip-wrap">
-                <router-link :to="`/projects/${encodeURIComponent(c.project_code)}`">{{ c.project_name }}</router-link>
-                <div v-if="c.content" class="tip">{{ c.content }}</div>
-              </div>
-            </td>
-            <td>{{ c.dept }}</td>
-            <td>{{ c.room }}</td>
-            <td>{{ c.role }}</td>
-            <td>{{ c.name }}</td>
-            <td>{{ c.email }}</td>
-            <td class="num">{{ c.phone }}</td>
-            <td>
-              <input type="checkbox" :checked="!!c.send_to" @change="toggleFlag(c, 'send_to')" title="主送" />
-            </td>
-            <td>
-              <input type="checkbox" :checked="!!c.send_cc" @change="toggleFlag(c, 'send_cc')" title="抄送" />
-            </td>
-            <td>
-              <input type="checkbox" :checked="!!c.send_bcc" @change="toggleFlag(c, 'send_bcc')" title="密送" />
-            </td>
-            <td class="ops">
-              <button @click="openForm(c)">编辑</button>
-              <button @click="remove(c)">删除</button>
+        <tbody v-for="g in groupedContacts" :key="g.code">
+          <!-- 项目分组行：点击折叠/展开 -->
+          <tr class="group-row" @click="toggleGroup(g.code)">
+            <td colspan="10">
+              <span class="caret">{{ expanded.has(g.code) ? '▾' : '▸' }}</span>
+              <span class="num group-code">{{ g.code }}</span>
+              <router-link class="group-name" :to="`/projects/${encodeURIComponent(g.code)}`" @click.stop>{{ g.name }}</router-link>
+              <span v-if="g.owner" class="group-owner">{{ g.owner }}</span>
+              <span class="group-stats">
+                关联人 {{ g.contacts.length }} 人 · 主送 {{ g.toCount }} / 抄送 {{ g.ccCount }} / 密送 {{ g.bccCount }}
+              </span>
+              <button class="link-btn group-add" @click.stop="openForm(null, g)">＋ 添加关联人</button>
             </td>
           </tr>
+          <!-- 关联人子行 -->
+          <template v-if="expanded.has(g.code)">
+            <tr v-for="c in g.contacts" :key="c.id" class="member-row">
+              <td>{{ c.dept }}</td>
+              <td>{{ c.room }}</td>
+              <td>{{ c.role }}</td>
+              <td>{{ c.name }}</td>
+              <td>{{ c.email }}</td>
+              <td class="num">{{ c.phone }}</td>
+              <td>
+                <input type="checkbox" :checked="!!c.send_to" @change="toggleFlag(c, 'send_to')" title="主送" />
+              </td>
+              <td>
+                <input type="checkbox" :checked="!!c.send_cc" @change="toggleFlag(c, 'send_cc')" title="抄送" />
+              </td>
+              <td>
+                <input type="checkbox" :checked="!!c.send_bcc" @change="toggleFlag(c, 'send_bcc')" title="密送" />
+              </td>
+              <td class="ops">
+                <button @click="openForm(c)">编辑</button>
+                <button @click="remove(c)">删除</button>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
-      <p v-if="!contacts.length" class="empty">暂无关联人，请点击上方「新增关联人」。</p>
+      <p v-if="!groupedContacts.length" class="empty">{{ contacts.length ? '无匹配项目，请调整筛选条件。' : '暂无关联人，请点击上方「新增关联人」。' }}</p>
     </div>
 
     <div v-if="editing" class="modal">
       <div class="dialog">
         <h3>{{ editing.id ? '编辑关联人' : '新增关联人' }}</h3>
 
-        <!-- 新增时搜索选择项目；编辑时项目固定展示 -->
-        <template v-if="!editing.id">
+        <!-- 从分组行进入或编辑时：项目固定展示；顶部新增时才搜索选择 -->
+        <template v-if="!editing.id && !editing.projectCode">
           <div class="proj-picker">
             <input
               type="text"
@@ -87,9 +100,6 @@
               </div>
             </div>
           </div>
-          <p v-if="editing.projectCode" class="picked">
-            已选项目：<span class="num">{{ editing.projectCode }}</span> {{ editing.projectName }}
-          </p>
         </template>
         <p v-else class="picked">
           项目：<span class="num">{{ editing.projectCode }}</span> {{ editing.projectName }}
@@ -120,8 +130,10 @@
           <label><input type="checkbox" v-model="editing.sendBcc" /> 密送</label>
         </div>
         <p v-if="formError" class="error">{{ formError }}</p>
+        <p v-if="continueSavedTip" class="ok-tip">{{ continueSavedTip }}</p>
         <div class="dialog-actions">
-          <button class="primary" @click="save">保存</button>
+          <button class="primary" @click="save(false)">保存</button>
+          <button v-if="!editing.id" @click="save(true)">保存并继续添加</button>
           <button @click="editing = null">取消</button>
         </div>
       </div>
@@ -130,7 +142,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { api } from '../api.js';
 import { exportContacts } from '../contactExcel.js';
 
@@ -144,6 +156,65 @@ const options = ref({ depts: [], rooms: [] });
 const fileInput = ref(null);
 const importing = ref(false);
 const importResult = ref(null);
+const selectedCode = ref('');
+const expanded = ref(new Set()); // 默认全部折叠，记录展开的项目编码
+const continueSavedTip = ref('');
+
+// 下拉选项：当前关联人涉及的项目（按编码去重）
+const projectOptions = computed(() => {
+  const seen = new Map();
+  for (const c of contacts.value) {
+    if (!seen.has(c.project_code)) {
+      seen.set(c.project_code, c.project_name || c.project_code);
+    }
+  }
+  return [...seen.entries()].map(([code, name]) => ({ code, name }));
+});
+
+// 按选中的项目筛选（前端本地过滤，列表已全量加载）
+const filteredContacts = computed(() => {
+  if (!selectedCode.value) return contacts.value;
+  return contacts.value.filter((c) => c.project_code === selectedCode.value);
+});
+
+// 按项目分组：分组行含关联人数与收件配置概览
+const groupedContacts = computed(() => {
+  const groups = new Map();
+  for (const c of filteredContacts.value) {
+    if (!groups.has(c.project_code)) {
+      groups.set(c.project_code, {
+        code: c.project_code,
+        name: c.project_name || c.project_code,
+        owner: c.owner || '',
+        contacts: [],
+        toCount: 0,
+        ccCount: 0,
+        bccCount: 0,
+      });
+    }
+    const g = groups.get(c.project_code);
+    g.contacts.push(c);
+    if (c.send_to) g.toCount++;
+    if (c.send_cc) g.ccCount++;
+    if (c.send_bcc) g.bccCount++;
+  }
+  return [...groups.values()];
+});
+
+function toggleGroup(code) {
+  const s = new Set(expanded.value);
+  if (s.has(code)) s.delete(code);
+  else s.add(code);
+  expanded.value = s;
+}
+
+// 筛选到具体项目时自动展开该分组
+function onFilterChange() {
+  if (!selectedCode.value) return;
+  const s = new Set(expanded.value);
+  s.add(selectedCode.value);
+  expanded.value = s;
+}
 
 async function load() {
   try {
@@ -153,8 +224,10 @@ async function load() {
   }
 }
 
-function openForm(c) {
+// openForm(c)：编辑；openForm(null)：顶部新增（搜索选项目）；openForm(null, group)：分组内新增（项目锁定）
+function openForm(c, group) {
   formError.value = '';
+  continueSavedTip.value = '';
   keyword.value = '';
   candidates.value = [];
   editing.value = c
@@ -174,8 +247,8 @@ function openForm(c) {
       }
     : {
         id: null,
-        projectCode: '',
-        projectName: '',
+        projectCode: group ? group.code : '',
+        projectName: group ? group.name : '',
         dept: '',
         room: '',
         role: '',
@@ -218,13 +291,33 @@ function pickProject(c) {
   candidates.value = [];
 }
 
-async function save() {
+async function save(continueAdd) {
   formError.value = '';
+  continueSavedTip.value = '';
   try {
     const { id, projectName, ...body } = editing.value;
-    if (id) await api.updateContact(id, body);
-    else await api.createContact(body);
-    editing.value = null;
+    if (id) {
+      await api.updateContact(id, body);
+      editing.value = null;
+    } else {
+      await api.createContact(body);
+      if (continueAdd) {
+        // 保留项目与部门/室，清空人员字段，连续录入
+        editing.value = {
+          ...editing.value,
+          role: '',
+          name: '',
+          email: '',
+          phone: '',
+          sendTo: true,
+          sendCc: false,
+          sendBcc: false,
+        };
+        continueSavedTip.value = '已保存，可继续添加下一位';
+      } else {
+        editing.value = null;
+      }
+    }
     await load();
   } catch (e) {
     formError.value = e.message;
@@ -300,40 +393,52 @@ onMounted(async () => {
 
 <style scoped>
 .table-card { padding: 8px 0; }
-.toolbar { display: flex; gap: 12px; }
+.toolbar { display: flex; gap: 12px; align-items: center; }
+.filter-select {
+  margin-left: auto;
+  max-width: 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+}
 .import-result { margin: 0 0 12px; }
 .ok-tip { font-size: 14px; color: #16a34a; margin: 0; }
 .error-list { margin: 4px 0 0; padding-left: 20px; color: var(--ruby); font-size: 13px; }
 .hint-tip { font-size: 12px; color: var(--ink-mute); margin: 0 0 12px; }
 .table-card table { text-align: center; }
 .table-card th, .table-card td { text-align: center; }
-.proj-name-cell { max-width: 200px; }
-.proj-name-cell a { color: var(--ink); text-decoration: none; }
-.proj-name-cell a:hover { color: var(--primary); }
-/* 建设内容悬浮弹窗 */
-.tip-wrap { position: relative; display: inline-block; }
-.tip {
-  display: none;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  top: calc(100% + 6px);
-  z-index: 20;
-  width: 320px;
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 10px 14px;
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-2);
-  font-size: 13px;
-  color: var(--ink-secondary);
+
+/* 项目分组行 */
+.group-row td {
+  background: var(--canvas-soft, #f5f6f8);
   text-align: left;
-  white-space: pre-wrap;
-  word-break: break-all;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--hairline);
+  user-select: none;
 }
-.tip-wrap:hover .tip { display: block; }
+.group-row:hover td { background: #eef1f5; }
+.caret { display: inline-block; width: 16px; color: var(--ink-mute); }
+.group-code { font-weight: 600; margin-right: 8px; }
+.group-name { color: var(--ink); text-decoration: none; margin-right: 12px; }
+.group-name:hover { color: var(--primary); }
+.group-owner { font-weight: 700; margin-right: 12px; }
+.group-stats { color: var(--ink-mute); font-size: 13px; }
+.group-add { float: right; }
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+}
+.link-btn:hover { text-decoration: underline; }
+
+/* 关联人子行：轻微缩进感 */
+.member-row td:first-child { padding-left: 28px; }
+
 .ops { display: flex; gap: 8px; justify-content: center; }
 .empty { text-align: center; color: var(--ink-mute); font-size: 14px; padding: 16px 0; }
 .modal {

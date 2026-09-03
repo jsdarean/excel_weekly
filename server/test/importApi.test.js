@@ -204,8 +204,8 @@ describe('POST /api/import', () => {
     const p2Again = list.body.watched.find((w) => w.project_code === 'P002');
     // P001 手工修改过，不应被覆盖
     expect(p1Again.progress[0].detail).toBe('手工改');
-    // P002 仍是 weekly 副本，应随导入更新
-    expect(p2Again.progress[0].detail).toBe('本周更新2');
+    // P002 仍是 weekly 副本，应随导入更新（导入时自动补句号）
+    expect(p2Again.progress[0].detail).toBe('本周更新2。');
   });
 
   it('导入新周次时自动为已关注项目补一份 watch_progress 副本', async () => {
@@ -227,6 +227,6 @@ describe('POST /api/import', () => {
     const p1 = list.body.watched.find((w) => w.project_code === 'P001');
     expect(p1.progress.map((p) => p.report_date)).toContain('2026-08-28');
     const p28 = p1.progress.find((p) => p.report_date === '2026-08-28');
-    expect(p28.detail).toBe('下周');
+    expect(p28.detail).toBe('下周。');
   });
 });

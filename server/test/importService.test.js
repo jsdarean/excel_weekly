@@ -33,6 +33,8 @@ describe('importData', () => {
     expect(p[0].approval_date).toBe('2025-09-09');
     const [w] = await getPool().query('SELECT * FROM weekly_progress');
     expect(w[0].report_date).toBe('2026-08-21');
+    // 末尾无结束标点的进展自动补句号
+    expect(w[0].progress).toBe('第一周进展。');
   });
 
   it('再次导入：基础数据更新（updated=1），同周进展覆盖', async () => {
@@ -46,7 +48,37 @@ describe('importData', () => {
     expect(p[0].stage).toBe('工程验收阶段');
     const [w] = await getPool().query('SELECT progress FROM weekly_progress');
     expect(w).toHaveLength(1);
-    expect(w[0].progress).toBe('修正后的进展');
+    expect(w[0].progress).toBe('修正后的进展。');
+  });
+
+  it('进展结尾标点处理：已有句号/感叹号不补，空值不补', async () => {
+    const p2 = structuredClone(parsed);
+    p2.progress = [
+      { projectCode: 'P001', progress: '已有句号。' },
+      { projectCode: 'P001', progress: '感叹号结尾！' },
+      { projectCode: 'P001', progress: '尾部空格  ' },
+      { projectCode: 'P001', progress: null },
+    ];
+    await importData(getPool(), p2, '2026-08-21');
+    // 同项目同周多次 upsert，最后一条（null）覆盖
+    const [w] = await getPool().query('SELECT progress FROM weekly_progress');
+    expect(w[0].progress).toBeNull();
+
+    const p3 = structuredClone(parsed);
+    p3.progress = [{ projectCode: 'P001', progress: '感叹号结尾！' }];
+    await importData(getPool(), p3, '2026-08-22');
+    const [w2] = await getPool().query(
+      "SELECT progress FROM weekly_progress WHERE report_date = '2026-08-22'"
+    );
+    expect(w2[0].progress).toBe('感叹号结尾！');
+
+    const p4 = structuredClone(parsed);
+    p4.progress = [{ projectCode: 'P001', progress: '已有句号。' }];
+    await importData(getPool(), p4, '2026-08-23');
+    const [w3] = await getPool().query(
+      "SELECT progress FROM weekly_progress WHERE report_date = '2026-08-23'"
+    );
+    expect(w3[0].progress).toBe('已有句号。');
   });
 
   it('同周同数据覆盖导入：updated=1（数据未变也算更新）', async () => {

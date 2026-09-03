@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import fs from 'node:fs';
 import { getPool } from '../db.js';
 import {
-  getTemplate, saveTemplate, listMailProjects, renderProjectMail,
+  getTemplate, saveTemplate, listMailProjects, renderProjectMail, LOGO_PATH, LOGO_CID,
 } from '../bulkMailService.js';
 import { getEmailConfig, configComplete, sendAndArchive } from '../mailService.js';
 
@@ -96,11 +97,15 @@ router.get('/projects', async (req, res) => {
   }
 });
 
-// 预览某项目的完整邮件
+// 预览某项目的完整邮件（浏览器无法渲染 CID 附件，LOGO 替换为 data URI 展示）
 router.get('/preview/:code', async (req, res) => {
   try {
     const mail = await renderProjectMail(getPool(), req.params.code);
     if (!mail) return res.status(404).json({ error: '项目不存在' });
+    if (mail.hasLogo) {
+      const b64 = fs.readFileSync(LOGO_PATH).toString('base64');
+      mail.html = mail.html.replaceAll(`cid:${LOGO_CID}`, `data:image/png;base64,${b64}`);
+    }
     res.json({ mail });
   } catch (e) {
     res.status(500).json({ error: `预览失败：${e.message}` });
@@ -135,9 +140,12 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ error: '邮箱配置不完整，请先到「邮箱配置」页完善' });
     }
     try {
+      const attachments = mail.hasLogo
+        ? [{ filename: 'cmcc-logo-white.png', path: LOGO_PATH, cid: LOGO_CID }]
+        : undefined;
       const { sentFolder } = await sendAndArchive(config, {
         to: mail.to, cc: mail.cc, bcc: mail.bcc,
-        subject: mail.subject, text: mail.text, html: mail.html,
+        subject: mail.subject, text: mail.text, html: mail.html, attachments,
       });
       await writeLog(pool, mail, 'success', null);
       res.json({ ok: true, message: `发送成功，已存档到「${sentFolder}」` });

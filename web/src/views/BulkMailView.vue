@@ -133,7 +133,8 @@
           <div><span class="meta-label">抄送</span>{{ preview.cc.join('、') || '（无）' }}</div>
           <div><span class="meta-label">密送</span>{{ preview.bcc.join('、') || '（无）' }}</div>
         </div>
-        <div class="mail-body" v-html="preview.html"></div>
+        <!-- 用 iframe 隔离邮件 HTML，避免系统全局表格样式污染邮件排版 -->
+        <iframe class="mail-frame" :srcdoc="preview.html" title="邮件预览"></iframe>
         <p v-if="sendTip" :class="sendTip.ok ? 'ok-tip' : 'error'">{{ sendTip.message }}</p>
         <div class="modal-actions">
           <button class="primary" :disabled="sending" @click="confirmSend(false)">
@@ -358,10 +359,13 @@ onMounted(load);
   width: 44px;
   color: var(--ink-secondary);
 }
-.mail-body {
+.mail-body,
+.mail-frame {
+  width: 100%;
+  height: 520px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  overflow: hidden;
+  background: #f3f4f6;
   margin-bottom: 12px;
 }
 .modal-actions { display: flex; gap: 12px; }
