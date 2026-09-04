@@ -19,7 +19,7 @@
         <textarea v-model="tpl.signature" rows="4"></textarea>
       </label>
       <p class="hint">
-        可用占位符（主题/正文/签名均支持）：{{ placeholders }}
+        可用占位符（主题/信息卡片/正文/签名均支持）：{{ placeholders }}。信息卡片中单独一行写 {{ demandMarker }} 可渲染「需求部门/科室 | 需求人」表格。
       </p>
       <div class="actions">
         <button class="primary" :disabled="savingTpl" @click="saveTpl">{{ savingTpl ? '保存中…' : (tplSavedTip || '保存模板') }}</button>
@@ -152,9 +152,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { api } from '../api.js';
 
 const placeholders = '{{项目名称}} {{项目编码}} {{周进展}} {{建设内容}} {{立项金额}} {{项目阶段}} {{工程责任人}} {{责任人电话}} {{责任人邮箱}} {{周报日期}}';
+const demandMarker = '{{需求信息表}}';
+
+const router = useRouter();
 
 const tpl = ref({ subject: '', body: '', signature: '' });
 const projects = ref([]);
@@ -240,6 +244,25 @@ async function openPreview(code) {
   try {
     const res = await api.previewMail(code);
     preview.value = res.mail;
+    // 校验：需求人未出现在主送/抄送中 → 提醒补充项目关联人
+    const missing = res.mail.missingDemandOwners || [];
+    if (missing.length) {
+      const names = missing.map((m) => m.name).join('、');
+      if (window.confirm(`需求人「${names}」未出现在本邮件的主送或抄送中。\n是否需要添加「项目关联人」？`)) {
+        const first = missing[0];
+        const proj = projects.value.find((p) => p.projectCode === code);
+        router.push({
+          path: '/contacts',
+          query: {
+            add: code,
+            pname: proj?.projectName || code,
+            name: first.name,
+            dept: first.dept,
+            room: first.room,
+          },
+        });
+      }
+    }
   } catch (e) {
     error.value = e.message;
   }

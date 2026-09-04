@@ -21,7 +21,8 @@ export const DEFAULT_TEMPLATE = {
 立项金额（万元）：{{立项金额}}
 项目阶段：{{项目阶段}}
 工程责任人：{{工程责任人}}
-周报日期：{{周报日期}}`,
+周报日期：{{周报日期}}
+{{需求信息表}}`,
   body: `各位领导、同事：
 
 您好！现将您所关注项目的本周进展通报如下。
@@ -81,18 +82,35 @@ function textToParagraphs(text) {
 }
 
 // 商务风格 HTML 外壳（全部内联样式，兼容主流邮件客户端）
-// cardRows：信息卡片行 [{label, value}]，空数组则不渲染卡片
+// cardRows：信息卡片行 [{label, value} | {type:'demand'}]，空数组则不渲染卡片
+// demandRows：需求信息表行 [{org, owner}]，供 type:'demand' 的卡片行渲染
 // hasLogo：为 true 时页头左侧显示中国移动 LOGO（CID 附件，cid:cmcc-logo）
-export function buildHtmlEmail({ cardRows, bodyText, signatureText, hasLogo = false }) {
+export function buildHtmlEmail({ cardRows, demandRows = [], bodyText, signatureText, hasLogo = false }) {
   const metaRow = (label, value) =>
     `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>` +
     `<td style="padding:6px 0;color:#111827;font-size:13px;">${escapeHtml(value)}</td></tr>`;
+  const demandTable = demandRows.length
+    ? `<table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+        <tr>
+          <th style="border:1px solid #e5e7eb;background:#eef2f7;color:#374151;font-size:12px;padding:6px 10px;text-align:left;font-weight:600;">需求部门/科室</th>
+          <th style="border:1px solid #e5e7eb;background:#eef2f7;color:#374151;font-size:12px;padding:6px 10px;text-align:left;font-weight:600;">需求人</th>
+        </tr>
+        ${demandRows.map((r) =>
+          `<tr><td style="border:1px solid #e5e7eb;color:#111827;font-size:13px;padding:6px 10px;">${escapeHtml(r.org)}</td>` +
+          `<td style="border:1px solid #e5e7eb;color:#111827;font-size:13px;padding:6px 10px;">${escapeHtml(r.owner)}</td></tr>`
+        ).join('')}
+      </table>`
+    : '<span style="color:#9ca3af;font-size:13px;">（无）</span>';
+  const cardRowHtml = (r) =>
+    r.type === 'demand'
+      ? `<tr><td colspan="2" style="padding:6px 0;">${demandTable}</td></tr>`
+      : metaRow(r.label, r.value);
   const cardHtml = cardRows.length
     ? `<table style="border-collapse:collapse;background:#f9fafb;border:1px solid #eef0f2;border-radius:6px;width:100%;margin-bottom:20px;" cellpadding="0" cellspacing="0">
       <tbody style="display:table-row-group;">
         <tr><td style="padding:12px 16px;" colspan="2">
-          <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody>
-            ${cardRows.map((r) => metaRow(r.label, r.value)).join('')}
+          <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0"><tbody>
+            ${cardRows.map(cardRowHtml).join('')}
           </tbody></table>
         </td></tr>
       </tbody>
@@ -108,7 +126,7 @@ export function buildHtmlEmail({ cardRows, bodyText, signatureText, hasLogo = fa
     <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody><tr>
       ${hasLogo ? `<td style="vertical-align:middle;">${logoImg}</td>` : ''}
       <td style="vertical-align:middle;">
-        <div style="color:#ffffff;font-size:18px;font-weight:bold;">项目进展通报</div>
+        <div style="color:#ffffff;font-size:18px;font-weight:bold;">项目进展信息</div>
         <div style="color:rgba(255,255,255,0.85);font-size:12px;margin-top:4px;">工程建设部 · 核心网室</div>
       </td>
     </tr></tbody></table>
@@ -157,7 +175,7 @@ export function buildCcList(contactCc, globalCc, owner, contactTo) {
 // 按项目组装邮件数据：项目基础信息 + 最新一周进展 + 工程责任人联系方式 + 收件人分组
 export async function buildMailData(pool, projectCode) {
   const [prows] = await pool.query(
-    'SELECT project_code, project_name, content, owner, budget_wan, stage FROM projects WHERE project_code = ?',
+    'SELECT project_code, project_name, content, owner, budget_wan, stage, demand_dept, demand_room, demand_owner FROM projects WHERE project_code = ?',
     [projectCode]
   );
   if (!prows.length) return null;
@@ -198,6 +216,21 @@ export async function buildMailData(pool, projectCode) {
   const owner = { name: p.owner || '', email: ownerEmail };
   const cc = buildCcList(contactCc, globalCc, owner, contactTo);
 
+  // 校验：需求人（按 / 拆分）是否出现在主送/抄送（含通用抄送人与工程责任人）中
+  const demandRows = pairDemandRows(p.demand_dept, p.demand_room, p.demand_owner);
+  const recipientNames = new Set(
+    [...contactTo, ...contactCc, ...globalCc, owner]
+      .map((a) => a && a.name)
+      .filter(Boolean)
+  );
+  const seenNames = new Set();
+  const missingDemandOwners = [];
+  for (const r of demandRows) {
+    if (!r.owner || recipientNames.has(r.owner) || seenNames.has(r.owner)) continue;
+    seenNames.add(r.owner);
+    missingDemandOwners.push({ name: r.owner, dept: r.dept, room: r.room });
+  }
+
   const progress = latest && String(latest.progress ?? '').trim() ? latest.progress.trim() : '本周暂无进展';
   return {
     projectCode: p.project_code,
@@ -214,6 +247,8 @@ export async function buildMailData(pool, projectCode) {
       '周报日期': latest ? latest.report_date : '',
     },
     reportDate: latest ? latest.report_date : null,
+    demandRows,
+    missingDemandOwners,
     to: contactTo.map(fmtAddr),
     cc: cc.map(fmtAddr),
     bcc: contactBcc.map(fmtAddr),
@@ -223,11 +258,18 @@ export async function buildMailData(pool, projectCode) {
 }
 
 // 解析信息卡片模板：每行一条「标签：值」，值支持占位符；空行忽略
+// 单独一行的 {{需求信息表}} 是特殊标记：渲染为「需求部门/科室 | 需求人」两行表格
+export const DEMAND_TABLE_MARKER = '{{需求信息表}}';
+
 export function parseCardTemplate(cardText, placeholders) {
   const rows = [];
   for (const line of String(cardText ?? '').split('\n')) {
     const t = line.trim();
     if (!t) continue;
+    if (t === DEMAND_TABLE_MARKER) {
+      rows.push({ type: 'demand' });
+      continue;
+    }
     const sep = t.search(/[：:]/);
     if (sep < 0) {
       rows.push({ label: '', value: renderPlaceholders(t, placeholders) });
@@ -237,6 +279,25 @@ export function parseCardTemplate(cardText, placeholders) {
         value: renderPlaceholders(t.slice(sep + 1).trim(), placeholders),
       });
     }
+  }
+  return rows;
+}
+
+// 需求部门/科室/需求人按 / 拆分后按位置配对成行
+export function pairDemandRows(dept, room, owner) {
+  const split = (v) => String(v ?? '').split('/').map((s) => s.trim()).filter(Boolean);
+  const depts = split(dept);
+  const rooms = split(room);
+  const owners = split(owner);
+  const n = Math.max(depts.length, rooms.length, owners.length);
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    rows.push({
+      org: [depts[i], rooms[i]].filter(Boolean).join('/'),
+      dept: depts[i] || '',
+      room: rooms[i] || '',
+      owner: owners[i] || '',
+    });
   }
   return rows;
 }
@@ -251,7 +312,7 @@ export async function renderProjectMail(pool, projectCode) {
   const signatureText = renderPlaceholders(tpl.signature, data.placeholders);
   const cardRows = parseCardTemplate(tpl.card, data.placeholders);
   const hasLogo = hasLogoFile();
-  const html = buildHtmlEmail({ cardRows, bodyText, signatureText, hasLogo });
+  const html = buildHtmlEmail({ cardRows, demandRows: data.demandRows, bodyText, signatureText, hasLogo });
   return {
     projectCode: data.projectCode,
     reportDate: data.reportDate,
@@ -263,6 +324,7 @@ export async function renderProjectMail(pool, projectCode) {
     cc: data.cc,
     bcc: data.bcc,
     hasContactRecipients: data.hasContactRecipients,
+    missingDemandOwners: data.missingDemandOwners,
   };
 }
 

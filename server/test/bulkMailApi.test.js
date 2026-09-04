@@ -21,10 +21,10 @@ describe('buildHtmlEmail 页头', () => {
 async function seed() {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO projects (project_code, project_name, content, owner, budget_wan, stage)
-     VALUES ('P001', '智算X节点工程', '建设20台推理服务器', '张三', 320, '项目实施阶段'),
-            ('P002', '项目乙', '内容乙', '李四', NULL, NULL),
-            ('P003', '项目丙', '内容丙', '王五', NULL, NULL)`
+    `INSERT INTO projects (project_code, project_name, content, owner, budget_wan, stage, demand_dept, demand_room, demand_owner)
+     VALUES ('P001', '智算X节点工程', '建设20台推理服务器', '张三', 320, '项目实施阶段', '产品运营中心/网络部', '算力产品团队/核心网维护室', '张一/李二'),
+            ('P002', '项目乙', '内容乙', '李四', NULL, NULL, NULL, NULL, NULL),
+            ('P003', '项目丙', '内容丙', '王五', NULL, NULL, NULL, NULL, NULL)`
   );
   await pool.query(
     `INSERT INTO persons (name, phone, email, title)
@@ -125,7 +125,7 @@ describe('批量邮件项目列表与预览', () => {
     expect(m.text).toContain('建设20台推理服务器');
     expect(m.text).toContain('张三（电话：13900000000；邮箱：zhangsan@js.chinamobile.com）');
     expect(m.text).not.toContain('{{');
-    expect(m.html).toContain('项目进展通报');
+    expect(m.html).toContain('项目进展信息');
     expect(m.html).toContain('智算X节点工程');
     // 信息卡片：项目编码下面是建设内容，另有立项金额/项目阶段/工程责任人
     expect(m.html).toContain('建设20台推理服务器');
@@ -133,6 +133,11 @@ describe('批量邮件项目列表与预览', () => {
     expect(m.html).toContain('项目实施阶段');
     expect(m.html.indexOf('项目编码')).toBeLessThan(m.html.indexOf('建设内容'));
     expect(m.html.indexOf('建设内容')).toBeLessThan(m.html.indexOf('立项金额'));
+    // 需求信息表：/ 分隔的部门/科室/需求人按位置配对成行
+    expect(m.html).toContain('需求部门/科室');
+    expect(m.html).toContain('产品运营中心/算力产品团队');
+    expect(m.html).toContain('网络部/核心网维护室');
+    expect(m.html.indexOf('张一')).toBeLessThan(m.html.indexOf('李二'));
     expect(m.to).toEqual(['收件人A<a@x.com>']);
     // 抄送顺序：关联人勾选 → 通用抄送人（按配置顺序，乙与关联人重复剔除、丙与主送重复剔除、丁停用）→ 工程责任人
     expect(m.cc).toEqual([
@@ -142,6 +147,23 @@ describe('批量邮件项目列表与预览', () => {
     ]);
     expect(m.bcc).toEqual(['收件人C<c@x.com>']);
     expect(m.reportDate).toBe('2026-08-21');
+    // 需求人张一/李二均不在主送/抄送中 → 列入缺失清单（带配对的部门/室）
+    expect(m.missingDemandOwners).toEqual([
+      { name: '张一', dept: '产品运营中心', room: '算力产品团队' },
+      { name: '李二', dept: '网络部', room: '核心网维护室' },
+    ]);
+  });
+
+  it('预览：需求人已在主送/抄送中时不列入缺失清单', async () => {
+    // 把张一加成 P001 的抄送关联人
+    await getPool().query(
+      `INSERT INTO project_contacts (project_code, name, email, send_to, send_cc, send_bcc)
+       VALUES ('P001', '张一', 'zhangyi@x.com', 0, 1, 0)`
+    );
+    const res = await request(createApp()).get('/api/bulk-mail/preview/P001');
+    expect(res.body.mail.missingDemandOwners).toEqual([
+      { name: '李二', dept: '网络部', room: '核心网维护室' },
+    ]);
   });
 
   it('预览 P002：通用抄送人按 sort_order 排序（乙在甲前）', async () => {
@@ -186,6 +208,7 @@ describe('批量邮件项目列表与预览', () => {
     expect(m.text).toContain('本周暂无进展');
     expect(m.text).toContain('李四（电话：；邮箱：）');
     expect(m.reportDate).toBeNull();
+    expect(m.missingDemandOwners).toEqual([]);
   });
 
   it('预览不存在的项目返回 404', async () => {

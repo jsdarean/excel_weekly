@@ -143,8 +143,12 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api.js';
 import { exportContacts } from '../contactExcel.js';
+
+const route = useRoute();
+const router = useRouter();
 
 const contacts = ref([]);
 const editing = ref(null);
@@ -387,6 +391,15 @@ onMounted(async () => {
     options.value = await api.getContactOptions();
   } catch {
     // 候选加载失败不影响主流程
+  }
+  // 从批量邮件页跳转：自动打开该项目的新增弹窗并预填 部门/室/姓名
+  if (route.query.add) {
+    const { add, pname, name, dept, room } = route.query;
+    openForm(null, { code: String(add), name: String(pname || add) });
+    editing.value.name = String(name ?? '');
+    editing.value.dept = String(dept ?? '');
+    editing.value.room = String(room ?? '');
+    router.replace({ query: {} });
   }
 });
 </script>
