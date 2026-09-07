@@ -31,8 +31,11 @@
       <label>发件地址
         <input type="text" v-model="form.fromAddr" placeholder="默认同邮箱账号（可选）" />
       </label>
+      <label class="check-label">
+        <input type="checkbox" v-model="form.imapEnabled" /> 发送后存档到「已发送」（IMAP）
+      </label>
       <p class="hint">
-        IMAP 配置由系统自动推断：{{ form.smtpHost ? `imap 服务器 ${imapInferred}:993（TLS）` : '按 SMTP 服务器推断（smtp.xxx → imap.xxx:993）' }}，用于把发出的邮件存档到「已发送」文件夹。
+        IMAP 配置由系统自动推断：{{ form.smtpHost ? `imap 服务器 ${imapInferred}:993（TLS）` : '按 SMTP 服务器推断（smtp.xxx → imap.xxx:993）' }}，用于把发出的邮件存档到「已发送」文件夹。取消勾选后只发送、不存档。
       </p>
       <div class="actions">
         <button class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : (savedTip || '保存') }}</button>
@@ -59,7 +62,7 @@ import { api } from '../api.js';
 
 const form = ref({
   smtpHost: '', smtpPort: 465, smtpSecure: true,
-  smtpUser: '', smtpPass: '', fromName: '', fromAddr: '',
+  smtpUser: '', smtpPass: '', fromName: '', fromAddr: '', imapEnabled: true,
 });
 const hasPassword = ref(false);
 const error = ref('');

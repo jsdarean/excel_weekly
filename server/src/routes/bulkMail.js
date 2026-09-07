@@ -150,7 +150,13 @@ router.post('/send', async (req, res) => {
       await writeLog(pool, mail, 'success', null);
       res.json({ ok: true, message: `发送成功，已存档到「${sentFolder}」` });
     } catch (e) {
-      await writeLog(pool, mail, 'failed', e.message);
+      // 仅 IMAP 存档失败时 SMTP 已成功发送：状态记成功，错误信息留存备查
+      const archiveOnly = /IMAP|追加|存档/.test(e.message);
+      await writeLog(pool, mail, archiveOnly ? 'success' : 'failed',
+        archiveOnly ? `IMAP 存档失败：${e.message}` : e.message);
+      if (archiveOnly) {
+        return res.json({ ok: true, imapOk: false, message: `邮件已发送，但已发送存档失败：${e.message}` });
+      }
       res.status(502).json({ error: `发送失败：${e.message}` });
     }
   } catch (e) {

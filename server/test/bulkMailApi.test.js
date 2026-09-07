@@ -1,10 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { getPool } from '../src/db.js';
 import { resetDb } from './helpers/db.js';
 import { encryptText } from '../src/utils/crypto.js';
 import { buildHtmlEmail } from '../src/bulkMailService.js';
+import { sendAndArchive } from '../src/mailService.js';
+
+// 发送动作 mock 掉（测试环境无真实 SMTP），按需设置成功/失败
+vi.mock('../src/mailService.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, sendAndArchive: vi.fn() };
+});
 
 describe('buildHtmlEmail 页头', () => {
   it('移动蓝到白色的左→右渐变；hasLogo 时含 CID 图片，否则不含', () => {
@@ -217,10 +224,19 @@ describe('批量邮件项目列表与预览', () => {
   });
 });
 
+async function seedEmailConfig() {
+  await getPool().query(
+    `INSERT INTO email_config (id, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc, from_name, from_addr)
+     VALUES (1, '127.0.0.1', 2525, 0, 'u@x.com', ?, '测试', 'u@x.com')`,
+    [encryptText('x')]
+  );
+}
+
 describe('批量邮件发送与记录', () => {
   beforeEach(async () => {
     await resetDb();
     await seed();
+    sendAndArchive.mockReset();
   });
 
   it('邮箱未配置返回 400；无收件人返回 400；项目不存在返回 404', async () => {
@@ -236,13 +252,9 @@ describe('批量邮件发送与记录', () => {
     expect(missing.status).toBe(404);
   });
 
-  it('发送失败写入 mail_logs（status=failed），GET /logs 可见', async () => {
-    // 配置一个不可达的 SMTP，发送必然失败
-    await getPool().query(
-      `INSERT INTO email_config (id, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc, from_name, from_addr)
-       VALUES (1, '127.0.0.1', 2525, 0, 'u@x.com', ?, '测试', 'u@x.com')`,
-      [encryptText('x')]
-    );
+  it('发送失败（SMTP 错误）写入 mail_logs（status=failed），GET /logs 可见', async () => {
+    await seedEmailConfig();
+    sendAndArchive.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:2525'));
     const res = await request(createApp()).post('/api/bulk-mail/send').send({ projectCode: 'P001' });
     expect(res.status).toBe(502);
 
@@ -256,6 +268,32 @@ describe('批量邮件发送与记录', () => {
     expect(log.error).toBeTruthy();
     expect(log.to_addr).toBe('收件人A<a@x.com>');
     expect(log.subject).toContain('智算X节点工程');
+  });
+
+  it('仅 IMAP 存档失败时：接口返回成功（imapOk=false），记录状态为 success 且留存存档错误', async () => {
+    await seedEmailConfig();
+    sendAndArchive.mockRejectedValue(new Error('IMAP 存档超时'));
+    const res = await request(createApp()).post('/api/bulk-mail/send').send({ projectCode: 'P001' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.imapOk).toBe(false);
+
+    const logs = await request(createApp()).get('/api/bulk-mail/logs');
+    expect(logs.body.logs).toHaveLength(1);
+    expect(logs.body.logs[0].status).toBe('success');
+    expect(logs.body.logs[0].error).toContain('IMAP 存档超时');
+  });
+
+  it('发送成功写入 mail_logs（status=success）', async () => {
+    await seedEmailConfig();
+    sendAndArchive.mockResolvedValue({ sentFolder: '已发送' });
+    const res = await request(createApp()).post('/api/bulk-mail/send').send({ projectCode: 'P001' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const logs = await request(createApp()).get('/api/bulk-mail/logs');
+    expect(logs.body.logs[0].status).toBe('success');
+    expect(logs.body.logs[0].error).toBeNull();
   });
 });
 

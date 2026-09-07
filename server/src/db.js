@@ -175,8 +175,17 @@ export async function initDatabase() {
     smtp_pass_enc TEXT,
     from_name VARCHAR(64),
     from_addr VARCHAR(128),
+    imap_enabled TINYINT(1) NOT NULL DEFAULT 1,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：IMAP 存档开关
+  const [imapCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'email_config' AND column_name = 'imap_enabled'`
+  );
+  if (imapCol.length === 0) {
+    await p.query('ALTER TABLE email_config ADD COLUMN imap_enabled TINYINT(1) NOT NULL DEFAULT 1');
+  }
   // 批量邮件模板（单行，id 固定为 1）：主题/信息卡片/正文/签名，均支持 {{占位符}}
   await p.query(`CREATE TABLE IF NOT EXISTS mail_template (
     id INT PRIMARY KEY,

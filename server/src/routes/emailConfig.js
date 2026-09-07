@@ -21,6 +21,7 @@ router.get('/', async (req, res) => {
         fromName: r.from_name ?? '',
         fromAddr: r.from_addr ?? '',
         hasPassword: !!r.smtp_pass_enc,
+        imapEnabled: r.imap_enabled === null || r.imap_enabled === undefined ? true : !!r.imap_enabled,
         // 展示用：系统据 SMTP 推断的 IMAP 地址
         imapInferred: r.smtp_host ? `${inferImapHost(r.smtp_host)}:993` : '',
       },
@@ -43,6 +44,7 @@ router.put('/', async (req, res) => {
     const fromName = String(b.fromName ?? '').trim();
     const fromAddr = String(b.fromAddr ?? '').trim();
     const smtpPass = String(b.smtpPass ?? '');
+    const imapEnabled = b.imapEnabled === undefined ? 1 : (b.imapEnabled ? 1 : 0);
 
     const pool = getPool();
     const [rows] = await pool.query('SELECT smtp_pass_enc FROM email_config WHERE id = 1');
@@ -51,12 +53,13 @@ router.put('/', async (req, res) => {
     if (!passEnc) return res.status(400).json({ error: '首次配置必须填写授权码/密码' });
 
     await pool.query(
-      `INSERT INTO email_config (id, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc, from_name, from_addr)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO email_config (id, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_enc, from_name, from_addr, imap_enabled)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE smtp_host = VALUES(smtp_host), smtp_port = VALUES(smtp_port),
          smtp_secure = VALUES(smtp_secure), smtp_user = VALUES(smtp_user),
-         smtp_pass_enc = VALUES(smtp_pass_enc), from_name = VALUES(from_name), from_addr = VALUES(from_addr)`,
-      [smtpHost, smtpPort, smtpSecure, smtpUser, passEnc, fromName, fromAddr]
+         smtp_pass_enc = VALUES(smtp_pass_enc), from_name = VALUES(from_name), from_addr = VALUES(from_addr),
+         imap_enabled = VALUES(imap_enabled)`,
+      [smtpHost, smtpPort, smtpSecure, smtpUser, passEnc, fromName, fromAddr, imapEnabled]
     );
     res.json({ ok: true });
   } catch (e) {

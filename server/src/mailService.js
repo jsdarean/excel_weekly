@@ -27,6 +27,8 @@ export async function getEmailConfig() {
     smtpPass: r.smtp_pass_enc ? decryptText(r.smtp_pass_enc) : '',
     fromName: r.from_name || '',
     fromAddr: r.from_addr || r.smtp_user,
+    // IMAP 已发送存档开关（旧数据无此列时默认开启）
+    imapEnabled: r.imap_enabled === null || r.imap_enabled === undefined ? true : !!r.imap_enabled,
   };
 }
 
@@ -60,6 +62,8 @@ export async function sendAndArchive(config, { to, cc, bcc, subject, text, html,
   if (bcc && bcc.length) message.bcc = bcc;
   if (attachments && attachments.length) message.attachments = attachments;
   await transporter.sendMail(message);
+  // IMAP 开关关闭时跳过已发送存档
+  if (config.imapEnabled === false) return { sentFolder: null };
   const raw = await new MailComposer(message).compile().build();
   const folder = await appendToSent(config, raw, message.date);
   return { sentFolder: folder };

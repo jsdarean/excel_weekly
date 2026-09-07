@@ -35,7 +35,23 @@ describe('/api/email-config', () => {
     expect(c.fromName).toBe('核心网室');
     expect(c.hasPassword).toBe(true);
     expect(c.imapInferred).toBe('imap.example.com:993');
+    expect(c.imapEnabled).toBe(true); // 默认开启
     expect(JSON.stringify(res.body)).not.toContain('secret-auth-code');
+  });
+
+  it('IMAP 开关：关闭后读取为 false，再开启恢复 true', async () => {
+    const app = createApp();
+    await request(app).put('/api/email-config').send(config);
+    const off = await request(app)
+      .put('/api/email-config')
+      .send({ ...config, smtpPass: '', imapEnabled: false });
+    expect(off.status).toBe(200);
+    const res = await request(app).get('/api/email-config');
+    expect(res.body.config.imapEnabled).toBe(false);
+
+    await request(app).put('/api/email-config').send({ ...config, smtpPass: '', imapEnabled: true });
+    const res2 = await request(app).get('/api/email-config');
+    expect(res2.body.config.imapEnabled).toBe(true);
   });
 
   it('授权码留空表示不修改；缺 SMTP 服务器/账号返回 400', async () => {
