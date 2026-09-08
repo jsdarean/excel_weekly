@@ -74,7 +74,9 @@
         <tbody>
           <tr v-for="p in projects" :key="p.projectCode">
             <td class="nowrap">{{ p.projectCode }}</td>
-            <td>{{ p.projectName }}</td>
+            <td>
+              <router-link class="proj-link" :to="`/projects/${encodeURIComponent(p.projectCode)}`">{{ p.projectName }}</router-link>
+            </td>
             <td class="nowrap">{{ p.owner }}</td>
             <td class="nowrap">
               主送 {{ p.toCount }} / 抄送 {{ p.ccCount }} / 密送 {{ p.bccCount }}
@@ -327,6 +329,8 @@ onMounted(load);
 .card { margin-bottom: 16px; }
 .card h3 { margin-top: 0; font-size: 16px; }
 .nowrap { white-space: nowrap; }
+.proj-link { color: var(--ink); text-decoration: none; }
+.proj-link:hover { color: var(--primary); text-decoration: underline; }
 .badge {
   display: inline-block;
   padding: 2px 8px;
