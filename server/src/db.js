@@ -40,6 +40,7 @@ export async function initDatabase() {
     demand_dept VARCHAR(128),
     demand_room VARCHAR(128),
     demand_owner VARCHAR(64),
+    plan_cutover_date DATE NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
@@ -60,6 +61,14 @@ export async function initDatabase() {
   );
   if (pinCol.length === 0) {
     await p.query('ALTER TABLE projects ADD COLUMN pin_order INT NULL');
+  }
+  // 兼容旧表：计划割接上线时间（来自 PMS 宽表，已有值不被覆盖）
+  const [cutoverCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = 'plan_cutover_date'`
+  );
+  if (cutoverCol.length === 0) {
+    await p.query('ALTER TABLE projects ADD COLUMN plan_cutover_date DATE NULL');
   }
   await p.query(`CREATE TABLE IF NOT EXISTS weekly_progress (
     id INT AUTO_INCREMENT PRIMARY KEY,

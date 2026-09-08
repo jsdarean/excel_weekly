@@ -22,7 +22,7 @@ const STAGE_MAP = {
 };
 
 const REQUIRED_COLS = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主'];
-const OPTIONAL_COLS = ['第一次立项批复完成时间', '第一次立项批复金额'];
+const OPTIONAL_COLS = ['第一次立项批复完成时间', '第一次立项批复金额', '总体进度计划-割接上线计划完成时间'];
 
 function extractXlsxFromZip(buf) {
   const zip = new AdmZip(buf);
@@ -107,6 +107,7 @@ function parsePmsRows(rows, personNames) {
       stage,
       approvalDate: idx['第一次立项批复完成时间'] >= 0 ? parsePmsDate(row[idx['第一次立项批复完成时间']]) : null,
       budgetWan: idx['第一次立项批复金额'] >= 0 ? parsePmsMoney(row[idx['第一次立项批复金额']]) : null,
+      planCutoverDate: idx['总体进度计划-割接上线计划完成时间'] >= 0 ? parsePmsDate(row[idx['总体进度计划-割接上线计划完成时间']]) : null,
     });
   }
   return parsed;
@@ -141,7 +142,7 @@ async function buildPreview(pool, rows) {
 
   for (const p of parsed) {
     const [existing] = await pool.query(
-      'SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = ?',
+      'SELECT stage, approval_date, budget_wan, plan_cutover_date FROM projects WHERE project_code = ?',
       [p.projectCode]
     );
     if (!existing.length) {
@@ -151,7 +152,8 @@ async function buildPreview(pool, rows) {
     const hasStageChange = existing[0].stage !== p.stage;
     const hasFill =
       (p.approvalDate && !existing[0].approval_date) ||
-      (p.budgetWan != null && existing[0].budget_wan == null);
+      (p.budgetWan != null && existing[0].budget_wan == null) ||
+      (p.planCutoverDate && !existing[0].plan_cutover_date);
     if (hasStageChange) {
       stageChanges.push({ ...p, from: existing[0].stage, to: p.stage, hasFill });
     } else if (hasFill) {
@@ -171,15 +173,15 @@ async function applyChanges(pool, toInsert, confirmedUpdates) {
 
   for (const p of toInsert) {
     await pool.query(
-      'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan) VALUES (?, ?, ?, ?, ?, ?)',
-      [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan]
+      'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan, plan_cutover_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan, p.planCutoverDate]
     );
     insertedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager });
   }
 
   for (const p of confirmedUpdates) {
     const [existing] = await pool.query(
-      'SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = ?',
+      'SELECT stage, approval_date, budget_wan, plan_cutover_date FROM projects WHERE project_code = ?',
       [p.projectCode]
     );
     if (!existing.length) continue;
@@ -196,6 +198,11 @@ async function applyChanges(pool, toInsert, confirmedUpdates) {
     if (p.budgetWan != null && existing[0].budget_wan == null) {
       updates.push('budget_wan = ?');
       params.push(p.budgetWan);
+    }
+    // 计划割接上线时间：仅库中为空时补充，已有值不覆盖
+    if (p.planCutoverDate && !existing[0].plan_cutover_date) {
+      updates.push('plan_cutover_date = ?');
+      params.push(p.planCutoverDate);
     }
     if (updates.length) {
       await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, p.projectCode]);
@@ -284,7 +291,7 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     for (const p of parsed) {
       const [existing] = await pool.query(
-        'SELECT stage, approval_date, budget_wan FROM projects WHERE project_code = ?',
+        'SELECT stage, approval_date, budget_wan, plan_cutover_date FROM projects WHERE project_code = ?',
         [p.projectCode]
       );
       if (existing.length) {
@@ -302,6 +309,11 @@ router.post('/', upload.single('file'), async (req, res) => {
           updates.push('budget_wan = ?');
           params.push(p.budgetWan);
         }
+        // 计划割接上线时间：仅库中为空时补充，已有值不覆盖
+        if (p.planCutoverDate && !existing[0].plan_cutover_date) {
+          updates.push('plan_cutover_date = ?');
+          params.push(p.planCutoverDate);
+        }
         if (updates.length) {
           await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, p.projectCode]);
           if (existing[0].stage !== p.stage) {
@@ -313,8 +325,8 @@ router.post('/', upload.single('file'), async (req, res) => {
         }
       } else {
         await pool.query(
-          'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan) VALUES (?, ?, ?, ?, ?, ?)',
-          [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan]
+          'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan, plan_cutover_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan, p.planCutoverDate]
         );
         stats.inserted++;
         stats.insertedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager });

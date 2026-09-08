@@ -56,6 +56,7 @@
             <th class="nowrap sticky" ref="codeCol" :style="{ left: lefts.code }">项目编码</th>
             <th class="nowrap sticky last-frozen" :style="[{ left: lefts.name }, nameColStyle]">项目名称</th>
             <th class="nowrap">立项批复日期</th>
+            <th class="nowrap">计划割接上线时间</th>
             <th class="nowrap">分类</th>
             <th class="nowrap">工程责任人</th>
             <th class="nowrap">立项金额（万元）</th>
@@ -94,6 +95,7 @@
               </div>
             </td>
             <td class="nowrap num">{{ r.approval_date }}</td>
+            <td class="nowrap num">{{ r.plan_cutover_date }}</td>
             <td class="nowrap">{{ r.category }}</td>
             <td class="nowrap">{{ r.owner }}</td>
             <td class="nowrap num">{{ r.budget_wan }}</td>

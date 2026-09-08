@@ -28,7 +28,7 @@ router.get('/projects/:code', async (req, res) => {
 
 router.put('/projects/:code', async (req, res) => {
   try {
-    const { category, stage, demand_dept, demand_room, demand_owner, content } = req.body || {};
+    const { category, stage, demand_dept, demand_room, demand_owner, content, plan_cutover_date } = req.body || {};
     if (category !== undefined && !VALID_CATEGORIES.includes(category)) {
       return res.status(400).json({ error: `分类必须是：${VALID_CATEGORIES.join('、')}` });
     }
@@ -36,7 +36,7 @@ router.put('/projects/:code', async (req, res) => {
       return res.status(400).json({ error: `项目阶段必须是：${VALID_STAGES.join('、')}` });
     }
     const pool = getPool();
-    // 只允许修改分类、项目阶段、需求部门/室/责任人、建设内容，其他字段一律忽略
+    // 只允许修改分类、项目阶段、需求部门/室/责任人、建设内容、计划割接上线时间，其他字段一律忽略
     const sets = [];
     const params = [];
     if (category !== undefined) { sets.push('category = ?'); params.push(category); }
@@ -45,6 +45,7 @@ router.put('/projects/:code', async (req, res) => {
     if (demand_room !== undefined) { sets.push('demand_room = ?'); params.push(demand_room); }
     if (demand_owner !== undefined) { sets.push('demand_owner = ?'); params.push(demand_owner); }
     if (content !== undefined) { sets.push('content = ?'); params.push(content); }
+    if (plan_cutover_date !== undefined) { sets.push('plan_cutover_date = ?'); params.push(plan_cutover_date || null); }
     if (sets.length === 0) {
       return res.status(400).json({ error: '没有需要更新的字段' });
     }

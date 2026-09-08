@@ -60,10 +60,11 @@ describe('PUT /api/projects/:code', () => {
         demand_room: '政企客户室',
         demand_owner: '王五',
         content: '建设30台推理服务器',
+        plan_cutover_date: '2026-12-31',
       });
     expect(res.status).toBe(200);
     const [rows] = await getPool().query(
-      "SELECT category, stage, demand_dept, demand_room, demand_owner, content FROM projects WHERE project_code = 'P001'"
+      "SELECT category, stage, demand_dept, demand_room, demand_owner, content, plan_cutover_date FROM projects WHERE project_code = 'P001'"
     );
     expect(rows[0].category).toBe('收入相关');
     expect(rows[0].stage).toBe('工程验收阶段');
@@ -71,6 +72,7 @@ describe('PUT /api/projects/:code', () => {
     expect(rows[0].demand_room).toBe('政企客户室');
     expect(rows[0].demand_owner).toBe('王五');
     expect(rows[0].content).toBe('建设30台推理服务器');
+    expect(rows[0].plan_cutover_date).toBe('2026-12-31');
   });
 
   it('非法分类/阶段返回 400', async () => {

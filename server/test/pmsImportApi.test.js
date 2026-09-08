@@ -14,6 +14,15 @@ function buildPmsBuffer(rows) {
   return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
+// 带「总体进度计划-割接上线计划完成时间」列的宽表
+function buildPmsBufferWithCutover(rows) {
+  const header = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '第一次立项批复完成时间', '第一次立项批复金额', '总体进度计划-割接上线计划完成时间'];
+  const ws = xlsx.utils.aoa_to_sheet([header, ...rows]);
+  const wb = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(wb, ws, 'PMS');
+  return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
 function buildPmsZipBuffer(rows) {
   const xlsxBuf = buildPmsBuffer(rows);
   const zip = new AdmZip();
@@ -83,8 +92,33 @@ describe('POST /api/import-pms', () => {
     ]);
   });
 
-  it('已有日期/金额时不被宽表覆盖', async () => {
+  it('割接上线计划完成时间：新增写入，空值补充，已有值不覆盖', async () => {
     const pool = getPool();
+    await pool.query(
+      "UPDATE projects SET plan_cutover_date = '2026-05-01' WHERE project_code = 'P001'"
+    );
+    const buf = buildPmsBufferWithCutover([
+      // 已有值 → 不覆盖
+      ['P001', '已有项目甲', '工程实施阶段', '张三', null, null, '2026/9/30'],
+      // 无值 → 补充
+      ['P002', '已有项目乙', '勘察设计阶段', '李四', null, null, '2026-10-01'],
+      // 新增项目 → 直接写入
+      ['P999', '新项目丙', '工程实施阶段', '张三', null, null, new Date(2026, 11, 31)],
+    ]);
+    const res = await request(createApp())
+      .post('/api/import-pms')
+      .attach('file', buf, 'pms.xlsx');
+    expect(res.status).toBe(200);
+
+    const [p1] = await pool.query("SELECT plan_cutover_date FROM projects WHERE project_code = 'P001'");
+    expect(p1[0].plan_cutover_date).toBe('2026-05-01');
+    const [p2] = await pool.query("SELECT plan_cutover_date FROM projects WHERE project_code = 'P002'");
+    expect(p2[0].plan_cutover_date).toBe('2026-10-01');
+    const [p9] = await pool.query("SELECT plan_cutover_date FROM projects WHERE project_code = 'P999'");
+    expect(p9[0].plan_cutover_date).toBe('2026-12-31');
+  });
+
+  it('已有日期/金额时不被宽表覆盖', async () => {    const pool = getPool();
     await pool.query(
       "UPDATE projects SET approval_date = '2024-01-01', budget_wan = 999 WHERE project_code = 'P002'"
     );

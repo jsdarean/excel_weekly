@@ -12,6 +12,10 @@
           <div class="info-item"><label>项目编码</label><span class="num">{{ project.project_code }}</span></div>
           <div class="info-item wide"><label>项目名称</label><span>{{ project.project_name }}</span></div>
           <div class="info-item"><label>立项批复日期</label><span class="num">{{ project.approval_date }}</span></div>
+          <div class="info-item">
+            <label>计划割接上线时间</label>
+            <input v-model="editCutover" type="date" />
+          </div>
           <div class="info-item"><label>工程责任人</label><span>{{ project.owner }}</span></div>
           <div class="info-item"><label>立项金额（万元）</label><span class="num">{{ project.budget_wan }}</span></div>
           <div class="info-item">
@@ -91,6 +95,7 @@ const editDemandDept = ref('');
 const editDemandRoom = ref('');
 const editDemandOwner = ref('');
 const editContent = ref('');
+const editCutover = ref('');
 const saving = ref(false);
 const savedTip = ref('');
 const saveError = ref('');
@@ -107,7 +112,8 @@ const dirty = computed(() => {
     editDemandDept.value !== norm(project.value.demand_dept) ||
     editDemandRoom.value !== norm(project.value.demand_room) ||
     editDemandOwner.value !== norm(project.value.demand_owner) ||
-    editContent.value !== norm(project.value.content)
+    editContent.value !== norm(project.value.content) ||
+    editCutover.value !== norm(project.value.plan_cutover_date)
   );
 });
 
@@ -129,6 +135,7 @@ async function save() {
       demand_room: editDemandRoom.value,
       demand_owner: editDemandOwner.value,
       content: editContent.value,
+      plan_cutover_date: editCutover.value,
     };
     await api.updateProject(code, body);
     project.value.category = editCategory.value;
@@ -137,6 +144,7 @@ async function save() {
     project.value.demand_room = editDemandRoom.value || null;
     project.value.demand_owner = editDemandOwner.value || null;
     project.value.content = editContent.value || null;
+    project.value.plan_cutover_date = editCutover.value || null;
     savedTip.value = '已保存';
     setTimeout(() => { savedTip.value = ''; }, 2000);
   } catch (e) {
@@ -157,6 +165,7 @@ onMounted(async () => {
     editDemandRoom.value = norm(res.project.demand_room);
     editDemandOwner.value = norm(res.project.demand_owner);
     editContent.value = norm(res.project.content);
+    editCutover.value = norm(res.project.plan_cutover_date);
   } catch (e) {
     error.value = e.message;
   }

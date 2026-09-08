@@ -36,7 +36,7 @@ router.get('/reports', async (req, res) => {
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const [rows] = await pool.query(
       `SELECT p.id, p.project_code, p.category_major, p.project_name,
-              p.approval_date, p.category, p.owner, p.budget_wan, p.stage,
+              p.approval_date, p.plan_cutover_date, p.category, p.owner, p.budget_wan, p.stage,
               p.content, p.demand_dept, p.demand_room, p.demand_owner,
               p.pin_order,
               EXISTS(
