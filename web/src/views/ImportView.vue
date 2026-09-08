@@ -77,11 +77,11 @@
               </div>
               <div v-if="!u.onlyFill" class="stage-actions">
                 <button
-                  :class="['btn-sm', pmsConfirmed.has(u.projectCode) ? 'primary' : '']"
+                  :class="['btn-sm', pmsConfirmed.has(u.projectCode) ? 'btn-green' : 'btn-plain']"
                   @click="confirmChange(u.projectCode, true)"
                 >变更</button>
                 <button
-                  :class="['btn-sm', !pmsConfirmed.has(u.projectCode) ? 'danger-btn' : '']"
+                  :class="['btn-sm', !pmsConfirmed.has(u.projectCode) ? 'btn-green' : 'btn-plain']"
                   @click="confirmChange(u.projectCode, false)"
                 >不变更</button>
               </div>
@@ -303,5 +303,8 @@ function resetPms() {
 .tag { font-size: 12px; color: #0369a1; background: #e0f2fe; padding: 2px 6px; border-radius: var(--r-sm); }
 .stage-actions { display: flex; gap: 8px; }
 .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: var(--r-sm); cursor: pointer; }
+/* 阶段变化确认按钮：选中态绿底，未选中白底灰边 */
+.btn-green { background: #16a34a; color: #fff; border: 1px solid #16a34a; }
+.btn-plain { background: #fff; color: var(--ink-secondary); border: 1px solid var(--hairline); }
 .apply-row { display: flex; gap: 12px; margin-top: 16px; }
 </style>
