@@ -19,7 +19,7 @@
         <textarea v-model="tpl.signature" rows="4"></textarea>
       </label>
       <p class="hint">
-        可用占位符（主题/信息卡片/正文/签名均支持）：{{ placeholders }}。信息卡片中单独一行写 {{ demandMarker }} 可渲染「需求部门/科室 | 需求人」表格。
+        可用占位符（主题/信息卡片/正文/签名均支持）：{{ placeholders }}。信息卡片中单独一行写 {{ demandMarker }} 可渲染「需求部门/科室 | 需求人」表格；卡片中的 {{ progressToken }} 会渲染为条形图+百分比。
       </p>
       <div class="actions">
         <button class="primary" :disabled="savingTpl" @click="saveTpl">{{ savingTpl ? '保存中…' : (tplSavedTip || '保存模板') }}</button>
@@ -155,8 +155,9 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api.js';
 
-const placeholders = '{{项目名称}} {{项目编码}} {{周进展}} {{建设内容}} {{立项金额}} {{项目阶段}} {{工程责任人}} {{责任人电话}} {{责任人邮箱}} {{周报日期}}';
+const placeholders = '{{项目名称}} {{项目编码}} {{周进展}} {{建设内容}} {{立项金额}} {{项目阶段}} {{工程责任人}} {{责任人电话}} {{责任人邮箱}} {{周报日期}} {{计划割接上线时间}} {{时间进度}}';
 const demandMarker = '{{需求信息表}}';
+const progressToken = '{{时间进度}}';
 
 const router = useRouter();
 

@@ -208,6 +208,33 @@ describe('批量邮件项目列表与预览', () => {
     expect(res2.body.mail.html).not.toContain('项目编码');
   });
 
+  it('占位符 {{计划割接上线时间}} 渲染项目基础数据中的时间', async () => {
+    const app = createApp();
+    await getPool().query("UPDATE projects SET plan_cutover_date = '2026-12-31' WHERE project_code = 'P001'");
+    await request(app).put('/api/bulk-mail/template').send({
+      subject: 's', card: '割接：{{计划割接上线时间}}', body: 'b', signature: 'g',
+    });
+    const res = await request(app).get('/api/bulk-mail/preview/P001');
+    expect(res.body.mail.html).toContain('2026-12-31');
+  });
+
+  it('占位符 {{时间进度}}：卡片中渲染为条形图+百分比；缺日期时为空', async () => {
+    const app = createApp();
+    await getPool().query(
+      "UPDATE projects SET approval_date = '2026-08-01', plan_cutover_date = '2026-12-31' WHERE project_code = 'P001'"
+    );
+    // 默认卡片模板含「时间进度」行
+    const res = await request(app).get('/api/bulk-mail/preview/P001');
+    const html = res.body.mail.html;
+    expect(html).toContain('时间进度');
+    expect(html).toMatch(/background:#0086d4/); // 进度条填充
+    expect(html).toMatch(/时间进度[\s\S]{0,600}?\d+%/); // 条形图同行带百分比
+
+    // P002 无立项批复/割接时间 → 不出现条形图
+    const res2 = await request(app).get('/api/bulk-mail/preview/P002');
+    expect(res2.body.mail.html).not.toMatch(/时间进度[\s\S]{0,600}?\d+%/);
+  });
+
   it('预览：无进展显示「本周暂无进展」；责任人不在人员配置中则联系方式为空', async () => {
     const res = await request(createApp()).get('/api/bulk-mail/preview/P002');
     expect(res.status).toBe(200);

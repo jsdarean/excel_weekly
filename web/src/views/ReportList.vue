@@ -57,6 +57,7 @@
             <th class="nowrap sticky last-frozen" :style="[{ left: lefts.name }, nameColStyle]">项目名称</th>
             <th class="nowrap">立项批复日期</th>
             <th class="nowrap">计划割接上线时间</th>
+            <th class="nowrap">时间进度</th>
             <th class="nowrap">分类</th>
             <th class="nowrap">工程责任人</th>
             <th class="nowrap">立项金额（万元）</th>
@@ -96,6 +97,14 @@
             </td>
             <td class="nowrap num">{{ r.approval_date }}</td>
             <td class="nowrap num">{{ r.plan_cutover_date }}</td>
+            <td class="nowrap">
+              <div v-if="timePct(r) !== null" class="time-progress">
+                <div class="tp-track">
+                  <div class="tp-fill" :style="{ width: Math.min(Math.max(timePct(r), 0), 100) + '%' }"></div>
+                </div>
+                <span class="tp-pct">{{ timePct(r) }}%</span>
+              </div>
+            </td>
             <td class="nowrap">{{ r.category }}</td>
             <td class="nowrap">{{ r.owner }}</td>
             <td class="nowrap num">{{ r.budget_wan }}</td>
@@ -129,6 +138,12 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { api } from '../api.js';
 import { exportReports } from '../exportExcel.js';
+import { timeProgressPct } from '../timeProgress.js';
+
+// 时间进度百分比（立项批复 → 计划割接上线，基于当前系统时间）；无数据返回 null
+function timePct(r) {
+  return timeProgressPct(r.approval_date, r.plan_cutover_date);
+}
 
 const dates = ref([]);
 const options = reactive({ categories: [], owners: [], stages: [] });
@@ -340,6 +355,18 @@ tbody tr.mail-on:hover td.sticky { background: #ffe9b8; }
 
 /* 备注：批量邮件项目说明 */
 .mail-hint { font-size: 13px; color: var(--ink-mute); margin: 0 0 8px; }
+
+/* 时间进度条 */
+.time-progress { display: flex; align-items: center; gap: 6px; }
+.tp-track {
+  width: 80px;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tp-fill { height: 100%; background: var(--primary, #665efd); border-radius: 4px; }
+.tp-pct { font-size: 12px; color: var(--ink-secondary); }
 
 /* 省略单元格：悬停浮层由 JS 驱动（.hover-tip），此处只负责单行省略 */
 .clip {

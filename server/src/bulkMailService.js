@@ -21,6 +21,7 @@ export const DEFAULT_TEMPLATE = {
 立项金额（万元）：{{立项金额}}
 项目阶段：{{项目阶段}}
 工程责任人：{{工程责任人}}
+时间进度：{{时间进度}}
 周报日期：{{周报日期}}
 {{需求信息表}}`,
   body: `各位领导、同事：
@@ -81,14 +82,29 @@ function textToParagraphs(text) {
     .join('');
 }
 
+// 时间进度条形图（邮件客户端安全的 table 实现）：灰底轨道 + 蓝色填充 + 右侧百分比
+function progressBarHtml(pct) {
+  const w = Math.min(Math.max(pct, 0), 100);
+  const fill = w > 0
+    ? `<td width="${w}%" style="background:#0086d4;border-radius:5px;font-size:0;line-height:0;">&nbsp;</td>`
+    : '';
+  return `<table style="border-collapse:collapse;" cellpadding="0" cellspacing="0"><tbody><tr>` +
+    `<td style="padding-right:8px;"><table width="120" height="10" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#e5e7eb;border-radius:5px;"><tbody><tr>${fill}<td style="font-size:0;line-height:0;">&nbsp;</td></tr></tbody></table></td>` +
+    `<td style="color:#111827;font-size:13px;">${pct}%</td>` +
+    `</tr></tbody></table>`;
+}
+
 // 商务风格 HTML 外壳（全部内联样式，兼容主流邮件客户端）
-// cardRows：信息卡片行 [{label, value} | {type:'demand'}]，空数组则不渲染卡片
+// cardRows：信息卡片行 [{label, value} | {label, progressPct} | {type:'demand'}]，空数组则不渲染卡片
 // demandRows：需求信息表行 [{org, owner}]，供 type:'demand' 的卡片行渲染
 // hasLogo：为 true 时页头左侧显示中国移动 LOGO（CID 附件，cid:cmcc-logo）
 export function buildHtmlEmail({ cardRows, demandRows = [], bodyText, signatureText, hasLogo = false }) {
   const metaRow = (label, value) =>
     `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>` +
     `<td style="padding:6px 0;color:#111827;font-size:13px;">${escapeHtml(value)}</td></tr>`;
+  const barRow = (label, pct) =>
+    `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:middle;">${escapeHtml(label)}</td>` +
+    `<td style="padding:6px 0;">${progressBarHtml(pct)}</td></tr>`;
   const demandTable = demandRows.length
     ? `<table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
         <tr>
@@ -104,7 +120,9 @@ export function buildHtmlEmail({ cardRows, demandRows = [], bodyText, signatureT
   const cardRowHtml = (r) =>
     r.type === 'demand'
       ? `<tr><td colspan="2" style="padding:6px 0;">${demandTable}</td></tr>`
-      : metaRow(r.label, r.value);
+      : r.progressPct !== undefined && r.progressPct !== null
+        ? barRow(r.label, r.progressPct)
+        : metaRow(r.label, r.value);
   const cardHtml = cardRows.length
     ? `<table style="border-collapse:collapse;background:#f9fafb;border:1px solid #eef0f2;border-radius:6px;width:100%;margin-bottom:20px;" cellpadding="0" cellspacing="0">
       <tbody style="display:table-row-group;">
@@ -172,10 +190,20 @@ export function buildCcList(contactCc, globalCc, owner, contactTo) {
   return out;
 }
 
+// 时间进度百分比：(当前时间 - 立项批复时间) / (计划割接上线时间 - 立项批复时间)
+// 与前端 web/src/timeProgress.js 逻辑一致；缺数据或区间非法返回 null
+function timeProgressPct(approvalDate, cutoverDate) {
+  if (!approvalDate || !cutoverDate) return null;
+  const start = new Date(`${approvalDate}T00:00:00`).getTime();
+  const end = new Date(`${cutoverDate}T00:00:00`).getTime();
+  if (!(end > start)) return null;
+  return Math.round(((Date.now() - start) / (end - start)) * 100);
+}
+
 // 按项目组装邮件数据：项目基础信息 + 最新一周进展 + 工程责任人联系方式 + 收件人分组
 export async function buildMailData(pool, projectCode) {
   const [prows] = await pool.query(
-    'SELECT project_code, project_name, content, owner, budget_wan, stage, demand_dept, demand_room, demand_owner FROM projects WHERE project_code = ?',
+    'SELECT project_code, project_name, content, owner, budget_wan, stage, demand_dept, demand_room, demand_owner, plan_cutover_date, approval_date FROM projects WHERE project_code = ?',
     [projectCode]
   );
   if (!prows.length) return null;
@@ -245,10 +273,16 @@ export async function buildMailData(pool, projectCode) {
       '责任人电话': ownerPhone,
       '责任人邮箱': ownerEmail,
       '周报日期': latest ? latest.report_date : '',
+      '计划割接上线时间': p.plan_cutover_date || '',
+      '时间进度': (() => {
+        const pct = timeProgressPct(p.approval_date, p.plan_cutover_date);
+        return pct === null ? '' : `${pct}%`;
+      })(),
     },
     reportDate: latest ? latest.report_date : null,
     demandRows,
     missingDemandOwners,
+    progressPct: timeProgressPct(p.approval_date, p.plan_cutover_date),
     to: contactTo.map(fmtAddr),
     cc: cc.map(fmtAddr),
     bcc: contactBcc.map(fmtAddr),
@@ -259,9 +293,11 @@ export async function buildMailData(pool, projectCode) {
 
 // 解析信息卡片模板：每行一条「标签：值」，值支持占位符；空行忽略
 // 单独一行的 {{需求信息表}} 是特殊标记：渲染为「需求部门/科室 | 需求人」两行表格
+// 值含 {{时间进度}} 的行：渲染为条形图 + 百分比（extras.progressPct 提供数值）
 export const DEMAND_TABLE_MARKER = '{{需求信息表}}';
+const PROGRESS_BAR_TOKEN = '{{时间进度}}';
 
-export function parseCardTemplate(cardText, placeholders) {
+export function parseCardTemplate(cardText, placeholders, extras = {}) {
   const rows = [];
   for (const line of String(cardText ?? '').split('\n')) {
     const t = line.trim();
@@ -271,14 +307,13 @@ export function parseCardTemplate(cardText, placeholders) {
       continue;
     }
     const sep = t.search(/[：:]/);
-    if (sep < 0) {
-      rows.push({ label: '', value: renderPlaceholders(t, placeholders) });
-    } else {
-      rows.push({
-        label: t.slice(0, sep).trim(),
-        value: renderPlaceholders(t.slice(sep + 1).trim(), placeholders),
-      });
+    const label = sep < 0 ? '' : t.slice(0, sep).trim();
+    const rawValue = sep < 0 ? t : t.slice(sep + 1).trim();
+    const row = { label, value: renderPlaceholders(rawValue, placeholders) };
+    if (rawValue.includes(PROGRESS_BAR_TOKEN)) {
+      row.progressPct = extras.progressPct ?? null; // null = 无数据，条形图不渲染
     }
+    rows.push(row);
   }
   return rows;
 }
@@ -310,7 +345,7 @@ export async function renderProjectMail(pool, projectCode) {
   const subject = renderPlaceholders(tpl.subject, data.placeholders);
   const bodyText = renderPlaceholders(tpl.body, data.placeholders);
   const signatureText = renderPlaceholders(tpl.signature, data.placeholders);
-  const cardRows = parseCardTemplate(tpl.card, data.placeholders);
+  const cardRows = parseCardTemplate(tpl.card, data.placeholders, { progressPct: data.progressPct });
   const hasLogo = hasLogoFile();
   const html = buildHtmlEmail({ cardRows, demandRows: data.demandRows, bodyText, signatureText, hasLogo });
   return {
