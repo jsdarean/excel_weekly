@@ -9,6 +9,7 @@ describe('initDatabase', () => {
       "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name"
     );
     expect(rows.map((r) => r.TABLE_NAME ?? r.table_name)).toEqual([
+      'directory',
       'email_config',
       'mail_cc_list',
       'mail_logs',

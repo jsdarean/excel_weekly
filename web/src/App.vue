@@ -10,6 +10,7 @@
       <router-link to="/import">数据导入</router-link>
       <span class="nav-sep"></span>
       <router-link to="/persons">工程责任人</router-link>
+      <router-link to="/directory">通讯录</router-link>
       <router-link to="/contacts">项目关联人</router-link>
       <router-link to="/email-config">邮箱配置</router-link>
     </nav>

@@ -174,6 +174,18 @@ export async function initDatabase() {
     await p.query('UPDATE project_contacts SET send_to = subscribed');
     await p.query('ALTER TABLE project_contacts DROP COLUMN subscribed');
   }
+  // 通讯录：部门→室→人员，供项目关联人录入时检索带出
+  await p.query(`CREATE TABLE IF NOT EXISTS directory (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dept VARCHAR(128),
+    room VARCHAR(128),
+    name VARCHAR(64) NOT NULL,
+    title VARCHAR(16),
+    email VARCHAR(128),
+    phone VARCHAR(32),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
   // 邮箱配置（单行，id 固定为 1；smtp_pass_enc 为 AES-256-GCM 加密后的授权码）
   await p.query(`CREATE TABLE IF NOT EXISTS email_config (
     id INT PRIMARY KEY,

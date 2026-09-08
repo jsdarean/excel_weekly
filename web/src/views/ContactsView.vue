@@ -105,6 +105,25 @@
           项目：<span class="num">{{ editing.projectCode }}</span> {{ editing.projectName }}
         </p>
 
+        <!-- 通讯录级联选择：部门 → 室 → 人员，选人后自动带出下方字段 -->
+        <div class="dir-picker">
+          <span>从通讯录选择：</span>
+          <select v-model="dirDept" @change="onDirDeptChange">
+            <option value="">部门</option>
+            <option v-for="d in dirDepartments" :key="d" :value="d">{{ d }}</option>
+          </select>
+          <select v-model="dirRoom" :disabled="!dirDept" @change="dirPersonId = ''">
+            <option value="">室</option>
+            <option v-for="r in dirRooms" :key="r" :value="r">{{ r }}</option>
+          </select>
+          <select v-model="dirPersonId" :disabled="!dirPersons.length" @change="onDirPersonPick">
+            <option value="">人员</option>
+            <option v-for="p in dirPersonOptions" :key="p.id" :value="p.id">
+              {{ p.name }}<template v-if="!dirRoom && p.room">（{{ p.room }}）</template>
+            </option>
+          </select>
+        </div>
+
         <label>部门 <input type="text" v-model="editing.dept" list="dept-options" placeholder="可从已有部门中选择或直接输入" /></label>
         <datalist id="dept-options">
           <option v-for="d in options.depts" :key="d" :value="d" />
@@ -116,11 +135,26 @@
         <label>职务
           <select v-model="editing.role">
             <option value="">（不填）</option>
-            <option value="室经理">室经理</option>
-            <option value="员工">员工</option>
+            <option v-for="t in roleOptions" :key="t" :value="t">{{ t }}</option>
           </select>
         </label>
-        <label>姓名 <input type="text" v-model="editing.name" /></label>
+        <label>姓名
+          <input type="text" v-model="editing.name" @input="onNameInput" placeholder="输入姓名可从通讯录检索" />
+        </label>
+        <div v-if="nameCandidates.length" class="candidates">
+          <div
+            v-for="p in nameCandidates"
+            :key="p.id"
+            class="candidate"
+            @click="pickNameCandidate(p)"
+          >
+            <span>{{ p.name }}</span>
+            <span class="cand-org">{{ p.dept }} {{ p.room }} {{ p.title }}</span>
+          </div>
+        </div>
+        <p v-else-if="nameNotFound" class="not-found-tip">
+          通讯录中未找到「{{ editing.name }}」，保存关联人后可将其加入通讯录。
+        </p>
         <label>邮箱 <input type="email" v-model="editing.email" /></label>
         <label>电话 <input type="text" v-model="editing.phone" /></label>
         <div class="send-flags">
@@ -146,6 +180,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api.js';
 import { exportContacts } from '../contactExcel.js';
+import { applyDirectoryPerson } from '../directoryPick.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -163,6 +198,23 @@ const importResult = ref(null);
 const selectedCode = ref('');
 const expanded = ref(new Set()); // 默认全部折叠，记录展开的项目编码
 const continueSavedTip = ref('');
+const roleOptions = ['总经理', '副总', '室经理', '员工'];
+
+// 通讯录检索/级联状态
+const dirDepartments = ref([]);
+const dirRooms = ref([]);
+const dirPersons = ref([]);
+const dirDept = ref('');
+const dirRoom = ref('');
+const dirPersonId = ref('');
+const nameCandidates = ref([]);
+const nameNotFound = ref(false);
+const dirMatched = ref(false); // 当前姓名是否来自通讯录点选
+
+// 人员下拉：选了室则只显示该室人员，否则显示该部门全部人员（标注所在室）
+const dirPersonOptions = computed(() =>
+  dirRoom.value ? dirPersons.value.filter((p) => (p.room ?? '') === dirRoom.value) : dirPersons.value
+);
 
 // 下拉选项：当前关联人涉及的项目（按编码去重）
 const projectOptions = computed(() => {
@@ -234,6 +286,14 @@ function openForm(c, group) {
   continueSavedTip.value = '';
   keyword.value = '';
   candidates.value = [];
+  dirDept.value = '';
+  dirRoom.value = '';
+  dirPersonId.value = '';
+  dirRooms.value = [];
+  dirPersons.value = [];
+  nameCandidates.value = [];
+  nameNotFound.value = false;
+  dirMatched.value = false;
   editing.value = c
     ? {
         id: c.id,
@@ -295,6 +355,80 @@ function pickProject(c) {
   candidates.value = [];
 }
 
+// 通讯录级联：选部门 → 加载该部门的室与人员
+async function onDirDeptChange() {
+  dirRoom.value = '';
+  dirPersonId.value = '';
+  dirPersons.value = [];
+  if (!dirDept.value) {
+    dirRooms.value = [];
+    return;
+  }
+  try {
+    const [roomsRes, personsRes] = await Promise.all([
+      api.listDirectoryRooms(dirDept.value),
+      api.listDirectory({ dept: dirDept.value }),
+    ]);
+    dirRooms.value = roomsRes.rooms;
+    dirPersons.value = personsRes.directory;
+  } catch (e) {
+    formError.value = e.message;
+  }
+}
+
+// 级联选人：带出部门/室/邮箱/电话
+function onDirPersonPick() {
+  const p = dirPersons.value.find((x) => x.id === dirPersonId.value);
+  if (!p) return;
+  applyDirectoryPerson(editing.value, p);
+  dirMatched.value = true;
+  nameCandidates.value = [];
+  nameNotFound.value = false;
+}
+
+// 姓名检索：输入即查通讯录，提示是否找到
+let nameTimer = null;
+function onNameInput() {
+  dirMatched.value = false;
+  clearTimeout(nameTimer);
+  nameTimer = setTimeout(searchNames, 300);
+}
+
+async function searchNames() {
+  const kw = editing.value.name.trim();
+  if (!kw) {
+    nameCandidates.value = [];
+    nameNotFound.value = false;
+    return;
+  }
+  try {
+    const res = await api.listDirectory({ q: kw });
+    nameCandidates.value = res.directory.slice(0, 8);
+    nameNotFound.value = nameCandidates.value.length === 0;
+  } catch (e) {
+    formError.value = e.message;
+  }
+}
+
+// 点选检索结果：带出字段并标记来自通讯录
+function pickNameCandidate(p) {
+  applyDirectoryPerson(editing.value, p);
+  dirMatched.value = true;
+  nameCandidates.value = [];
+  nameNotFound.value = false;
+}
+
+// 保存后：姓名不在通讯录时，询问是否将其加入通讯录
+async function maybeAddToDirectory({ dept, room, name, email, phone }) {
+  if (dirMatched.value || !String(name).trim()) return;
+  if (!window.confirm(`通讯录中未找到「${name}」，是否将其加入通讯录？`)) return;
+  try {
+    await api.createDirectory({ dept, room, name, email, phone });
+  } catch (e) {
+    window.alert(`加入通讯录失败：${e.message}`);
+  }
+}
+
 async function save(continueAdd) {
   formError.value = '';
   continueSavedTip.value = '';
@@ -317,9 +451,14 @@ async function save(continueAdd) {
           sendCc: false,
           sendBcc: false,
         };
+        dirMatched.value = false;
+        nameCandidates.value = [];
+        nameNotFound.value = false;
         continueSavedTip.value = '已保存，可继续添加下一位';
       } else {
+        const saved = { ...body };
         editing.value = null;
+        await maybeAddToDirectory(saved);
       }
     }
     await load();
@@ -389,6 +528,7 @@ onMounted(async () => {
   await load();
   try {
     options.value = await api.getContactOptions();
+    dirDepartments.value = (await api.listDirectoryDepartments()).departments;
   } catch {
     // 候选加载失败不影响主流程
   }
@@ -509,4 +649,19 @@ onMounted(async () => {
 .candidate:hover { background: var(--canvas-soft); }
 .cand-org { margin-left: auto; color: var(--ink-mute); font-size: 13px; }
 .picked { margin: 0; font-size: 14px; color: var(--ink-secondary); }
+
+/* 通讯录级联选择 */
+.dir-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.dir-picker select { flex: 1; min-width: 0; }
+.not-found-tip {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: #b45309;
+}
 </style>

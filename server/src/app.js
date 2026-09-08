@@ -10,6 +10,7 @@ import statsRouter from './routes/stats.js';
 import projectsRouter from './routes/projects.js';
 import watchedRouter from './routes/watched.js';
 import contactsRouter from './routes/contacts.js';
+import directoryRouter from './routes/directory.js';
 import emailConfigRouter from './routes/emailConfig.js';
 import bulkMailRouter from './routes/bulkMail.js';
 import reportRouter from './routes/report.js';
@@ -27,6 +28,7 @@ export function createApp() {
   app.use('/api', projectsRouter);
   app.use('/api', watchedRouter);
   app.use('/api/contacts', contactsRouter);
+  app.use('/api/directory', directoryRouter);
   app.use('/api/email-config', emailConfigRouter);
   app.use('/api/bulk-mail', bulkMailRouter);
   app.use('/api', reportRouter);

@@ -50,6 +50,22 @@ export const api = {
     fd.append('file', file);
     return request('/api/persons/import', { method: 'POST', body: fd });
   },
+  listDirectory: (params) => request(`/api/directory${buildQuery(params ?? {})}`),
+  listDirectoryDepartments: () => request('/api/directory/departments'),
+  listDirectoryRooms: (dept) => request(`/api/directory/rooms${buildQuery({ dept })}`),
+  createDirectory: (d) =>
+    request('/api/directory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d),
+    }),
+  updateDirectory: (id, d) =>
+    request(`/api/directory/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d),
+    }),
+  deleteDirectory: (id) => request(`/api/directory/${id}`, { method: 'DELETE' }),
   getProject: (code) => request(`/api/projects/${encodeURIComponent(code)}`),
   updateProject: (code, body) =>
     request(`/api/projects/${encodeURIComponent(code)}`, {

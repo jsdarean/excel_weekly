@@ -6,6 +6,7 @@ import StatsView from './views/StatsView.vue';
 import ProjectDetail from './views/ProjectDetail.vue';
 import ImportView from './views/ImportView.vue';
 import PersonsView from './views/PersonsView.vue';
+import DirectoryView from './views/DirectoryView.vue';
 import ContactsView from './views/ContactsView.vue';
 import EmailConfigView from './views/EmailConfigView.vue';
 import BulkMailView from './views/BulkMailView.vue';
@@ -20,6 +21,7 @@ export const router = createRouter({
     { path: '/projects/:code', component: ProjectDetail },
     { path: '/import', component: ImportView },
     { path: '/persons', component: PersonsView },
+    { path: '/directory', component: DirectoryView },
     { path: '/contacts', component: ContactsView },
     { path: '/email-config', component: EmailConfigView },
     { path: '/bulk-mail', component: BulkMailView },

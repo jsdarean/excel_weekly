@@ -10,13 +10,13 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-const ROLES = ['室经理', '员工'];
+const ROLES = ['总经理', '副总', '室经理', '员工'];
 
 function validate(body) {
   if (!body || !String(body.projectCode ?? '').trim()) return '项目编码不能为空';
   if (!String(body.name ?? '').trim()) return '关联人姓名不能为空';
   const role = String(body.role ?? '').trim();
-  if (role && !ROLES.includes(role)) return '职务只能是「室经理」或「员工」';
+  if (role && !ROLES.includes(role)) return `职务只能是：${ROLES.join('、')}`;
   if ((body.sendTo || body.sendCc || body.sendBcc) && !String(body.email ?? '').trim()) {
     return '勾选主送/抄送/密送时邮箱不能为空';
   }
