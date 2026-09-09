@@ -101,7 +101,7 @@ function progressBarHtml(pct) {
 export function buildHtmlEmail({ cardRows, demandRows = [], bodyText, signatureText, hasLogo = false }) {
   const metaRow = (label, value) =>
     `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>` +
-    `<td style="padding:6px 0;color:#111827;font-size:13px;">${escapeHtml(value)}</td></tr>`;
+    `<td style="padding:6px 0;color:#111827;font-size:13px;line-height:1.7;word-break:break-word;">${escapeHtml(value).replace(/\n/g, '<br>')}</td></tr>`;
   const barRow = (label, pct) =>
     `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:middle;">${escapeHtml(label)}</td>` +
     `<td style="padding:6px 0;">${progressBarHtml(pct)}</td></tr>`;

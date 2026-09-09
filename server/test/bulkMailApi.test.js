@@ -23,6 +23,16 @@ describe('buildHtmlEmail 页头', () => {
     expect(withLogo).toContain('src="cid:cmcc-logo"');
     expect(withLogo).toContain('中国移动');
   });
+
+  it('卡片值单元格：换行转 <br>，长文可断行', () => {
+    const html = buildHtmlEmail({
+      cardRows: [{ label: '建设内容', value: '第一行\n第二行' }],
+      bodyText: '正文',
+      signatureText: '签名',
+    });
+    expect(html).toContain('第一行<br>第二行');
+    expect(html).toContain('word-break:break-word');
+  });
 });
 
 async function seed() {
