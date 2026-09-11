@@ -35,16 +35,41 @@
                 <div
                   class="bar"
                   :style="{ height: barHeight(m.count) + '%' }"
-                  :title="`${m.month}：${m.count} 个`"
-                ></div>
+                  @mouseenter="hoverMonth = m.month"
+                  @mouseleave="onBarLeave"
+                >
+                  <!-- 悬停时按工程责任人分段着色，悬停某段显示该责任人的当月项目数 -->
+                  <template v-if="hoverMonth === m.month">
+                    <div
+                      v-for="s in m.owners"
+                      :key="s.owner"
+                      class="bar-seg"
+                      :style="{ height: segHeight(s.count, m.count) + '%', background: ownerColor(s.owner) }"
+                      @mousemove="onBarSegMove($event, m, s)"
+                      @mouseleave="hideBarTip"
+                    ></div>
+                  </template>
+                </div>
               </div>
               <div class="num bar-label">{{ m.month }}</div>
             </div>
           </div>
         </div>
         <div class="chart-legend">
-          <span><i class="legend-bar"></i>项目数（个）</span>
+          <span><i class="legend-bar"></i>项目数（个，按工程责任人分段着色，悬停查看明细）</span>
           <span><i class="legend-line"></i>立项总金额（万元）</span>
+        </div>
+        <!-- 柱形分段悬停提示：工程责任人 + 当月项目数 -->
+        <div
+          v-if="barTip.show"
+          class="demand-tooltip"
+          :style="{ left: barTip.x + 'px', top: barTip.y + 'px' }"
+        >
+          <div class="tooltip-title">{{ barTip.month }} 立项</div>
+          <div class="tooltip-row">
+            <span>{{ barTip.owner }}</span>
+            <span class="num">{{ barTip.count }} 个</span>
+          </div>
         </div>
       </div>
 
@@ -139,7 +164,7 @@
 
         <div class="card dist-card">
           <h3>项目阶段分布</h3>
-          <div v-for="s in stats.byStage" :key="s.stage" class="dist-row">
+          <div v-for="s in byStageOrdered" :key="s.stage" class="dist-row">
             <span class="dist-name">{{ s.stage }}</span>
             <div class="bar-track">
               <div class="bar-fill stage" :style="{ width: pct(s.count) + '%' }"></div>
@@ -213,6 +238,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api.js';
+import { buildOwnerStats } from '../ownerColors.js';
 
 const stats = ref(null);
 const error = ref('');
@@ -228,6 +254,16 @@ const matrixCols = computed(() => {
 // 阶段矩阵列：顺序与后端 byStage 一致（数量降序）
 const stageCols = computed(() =>
   stats.value ? stats.value.byStage.map((s) => s.stage) : []
+);
+
+// 项目阶段分布卡片展示顺序：勘察设计阶段排在项目实施阶段之前，其余保持数量降序
+const STAGE_CARD_ORDER = { 勘察设计阶段: 0, 项目实施阶段: 1 };
+const byStageOrdered = computed(() =>
+  stats.value
+    ? [...stats.value.byStage].sort(
+        (a, b) => (STAGE_CARD_ORDER[a.stage] ?? 99) - (STAGE_CARD_ORDER[b.stage] ?? 99)
+      )
+    : []
 );
 
 function pct(n) {
@@ -247,6 +283,34 @@ function stageColSum(s) {
 function barHeight(n) {
   const max = Math.max(...stats.value.byMonth.map((m) => m.count), 1);
   return Math.max((n / max) * 100, 3); // 至少 3% 保证可见
+}
+
+// 柱内分段高度：占当月总数的百分比
+function segHeight(count, monthCount) {
+  return (count / monthCount) * 100;
+}
+
+// 工程责任人 → 颜色（全局一致，按总数降序分配色板）
+const ownerStats = computed(() =>
+  stats.value ? buildOwnerStats(stats.value.byMonth) : { owners: [], colors: new Map() }
+);
+function ownerColor(owner) {
+  return ownerStats.value.colors.get(owner) ?? '#0085d0';
+}
+
+// 柱形分段悬停提示
+const barTip = ref({ show: false, x: 0, y: 0, month: '', owner: '', count: 0 });
+// 当前悬停的柱子（仅该柱分段着色）
+const hoverMonth = ref('');
+function onBarSegMove(e, m, s) {
+  barTip.value = { x: e.clientX + 12, y: e.clientY - 10, show: true, month: m.month, owner: s.owner, count: s.count };
+}
+function hideBarTip() {
+  barTip.value.show = false;
+}
+function onBarLeave() {
+  hoverMonth.value = '';
+  hideBarTip();
 }
 
 // 折线图：每月立项金额（万元），SVG 在柱状图上方独立区域，横坐标与柱子一一对应
@@ -394,9 +458,20 @@ onMounted(async () => {
   background: linear-gradient(180deg, #33a3dc, #0085d0); /* 中国移动蓝 */
   box-shadow: 0 2px 8px rgba(0, 133, 208, 0.25);
   transition: height 0.6s ease;
+  display: flex;
+  flex-direction: column-reverse; /* 数组首个（数量最多）在柱底 */
+  overflow: hidden;
 }
 .bar:hover {
   background: linear-gradient(180deg, #66bef0, #33a3dc);
+}
+.bar-seg {
+  width: 100%;
+  min-height: 2px;
+  transition: filter 0.15s ease;
+}
+.bar-seg:hover {
+  filter: brightness(1.2);
 }
 .bar-label {
   font-size: 11px;

@@ -57,7 +57,9 @@ router.get('/stats', async (req, res) => {
       else entry['未分类'] = (entry['未分类'] || 0) + r.n;
       entry.total += r.n;
     }
-    const byOwnerCategory = [...map.values()].sort((a, b) => a.owner.localeCompare(b.owner, 'zh'));
+    const byOwnerCategory = [...map.values()].sort(
+      (a, b) => b.total - a.total || a.owner.localeCompare(b.owner, 'zh')
+    );
 
     // 责任人 × 阶段矩阵（阶段列顺序与 byStage 一致：数量降序，未填写垫底）
     const stageKeys = byStage.map((s) => s.stage);
@@ -78,16 +80,37 @@ router.get('/stats', async (req, res) => {
       entry[r.stg] = (entry[r.stg] || 0) + r.n;
       entry.total += r.n;
     }
-    const byOwnerStage = [...smap.values()].sort((a, b) => a.owner.localeCompare(b.owner, 'zh'));
+    const byOwnerStage = [...smap.values()].sort(
+      (a, b) => b.total - a.total || a.owner.localeCompare(b.owner, 'zh')
+    );
 
     // 按立项批复年月聚合（时间升序），柱状图/折线图用；含每月立项金额合计（万元）
+    // 及每月按工程责任人的数量拆分（柱子分段着色 + 悬停明细）
     const [monthRows] = await pool.query(
       `SELECT DATE_FORMAT(approval_date, '%Y-%m') AS ym, COUNT(*) AS n,
               COALESCE(SUM(budget_wan), 0) AS budget
        FROM projects WHERE approval_date IS NOT NULL
        GROUP BY ym ORDER BY ym`
     );
-    const byMonth = monthRows.map((r) => ({ month: r.ym, count: r.n, budget: String(r.budget) }));
+    const [ownerMonthRows] = await pool.query(
+      `SELECT DATE_FORMAT(approval_date, '%Y-%m') AS ym,
+              COALESCE(NULLIF(owner, ''), '未分配') AS own, COUNT(*) AS n
+       FROM projects WHERE approval_date IS NOT NULL
+       GROUP BY ym, own`
+    );
+    const ownersByMonth = new Map();
+    for (const r of ownerMonthRows) {
+      if (!ownersByMonth.has(r.ym)) ownersByMonth.set(r.ym, []);
+      ownersByMonth.get(r.ym).push({ owner: r.own, count: r.n });
+    }
+    const byMonth = monthRows.map((r) => ({
+      month: r.ym,
+      count: r.n,
+      budget: String(r.budget),
+      owners: (ownersByMonth.get(r.ym) || []).sort(
+        (a, b) => b.count - a.count || a.owner.localeCompare(b.owner, 'zh')
+      ),
+    }));
 
     // 需求部门统计：近 2 年，按 / 拆分需求部门与需求室（一一对应），按项目总数降序
     const [demandRows] = await pool.query(
