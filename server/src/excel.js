@@ -1,37 +1,53 @@
 import xlsx from 'xlsx';
 import iconv from 'iconv-lite';
 
-const COL = {
-  categoryMajor: 1, projectCode: 2, projectName: 3, approvalDate: 4,
-  category: 5, owner: 6, budgetWan: 7, stage: 8, content: 9,
-  progress: 11, purchaseRate: 12, disclosure: 13, arrivalRate: 14,
-  onlineHandover: 15, finalAcceptance: 16,
-  demandDept: 17, demandRoom: 18, demandOwner: 19,
-};
-
 export function parseHeaderDate(header) {
   const m = /(\d{4})(\d{2})(\d{2})/.exec(String(header ?? ''));
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
-// 关键列按固定索引取值，解析前必须校验表头，防止误传其他 Excel
-// （如《周报基础数据.xlsx》）被当作"导入成功 0 条"处理
-function validateHeader(header) {
-  const checks = [
-    { col: 'C', index: COL.projectCode, expect: '项目编码' },
-    { col: 'L', index: COL.progress, expect: '周进展' },
-  ];
-  const missing = checks.filter(
-    ({ index, expect }) => !String(header[index] ?? '').includes(expect)
-  );
+// 关键列按表头名解析（而非固定索引），兼容文件在任意位置新增列（如计划割接上线时间）
+// 周进展有两列（上周/本周），取最后一个含「周进展」的列作为本周进展
+function resolveColumns(header) {
+  const findAll = (name) => {
+    const idx = [];
+    for (let i = 0; i < header.length; i++) {
+      if (String(header[i] ?? '').includes(name)) idx.push(i);
+    }
+    return idx;
+  };
+  const find = (name) => findAll(name)[0] ?? -1;
+  const progressIdxs = findAll('周进展');
+  return {
+    categoryMajor: find('专业类别'),
+    projectCode: find('项目编码'),
+    projectName: find('项目名称'),
+    approvalDate: find('立项批复日期'),
+    planCutover: find('计划割接上线时间'),
+    category: find('分类'),
+    owner: find('工程责任人'),
+    budgetWan: find('立项金额'),
+    stage: find('项目阶段'),
+    content: find('建设内容'),
+    progress: progressIdxs.length ? progressIdxs[progressIdxs.length - 1] : -1,
+    purchaseRate: find('主设备请购完成率'),
+    disclosure: find('是否交底'),
+    arrivalRate: find('主设备到货完成率'),
+    onlineHandover: find('是否上线交维'),
+    finalAcceptance: find('是否竣工验收'),
+    demandDept: find('需求部门'),
+    demandRoom: find('需求室'),
+    demandOwner: find('需求责任人'),
+  };
+}
+
+// 解析前必须校验关键表头，防止误传其他 Excel（如《周报基础数据.xlsx》）被当作"导入成功 0 条"处理
+function validateColumns(col) {
+  const missing = [];
+  if (col.projectCode < 0) missing.push('"项目编码"');
+  if (col.progress < 0) missing.push('"周进展"');
   if (missing.length > 0) {
-    const detail = missing
-      .map(
-        ({ col, index, expect }) =>
-          `${col} 列应为"${expect}"（实际为"${header[index] ?? '空'}"）`
-      )
-      .join('，');
-    throw new Error(`Excel 缺少关键列：${detail}`);
+    throw new Error(`Excel 缺少关键列：${missing.join('，')} 列`);
   }
 }
 
@@ -84,8 +100,11 @@ export function parseWeeklyReport(buffer) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, defval: null });
   const header = rows[0] || [];
-  validateHeader(header);
-  const headerDate = parseHeaderDate(header[COL.progress]);
+  const col = resolveColumns(header);
+  validateColumns(col);
+  const headerDate = parseHeaderDate(header[col.progress]);
+
+  const cell = (row, idx) => (idx >= 0 ? row[idx] : null);
 
   const projects = [];
   const progress = [];
@@ -93,36 +112,38 @@ export function parseWeeklyReport(buffer) {
 
   for (const row of rows.slice(1)) {
     const hasContent = row
-      .slice(1, 20)
+      .slice(1)
       .some((v) => v !== null && v !== undefined && String(v).trim() !== '');
     if (!hasContent) continue;
-    const code = toText(row[COL.projectCode]);
+    const code = toText(cell(row, col.projectCode));
     if (!code) {
       skipped++;
       continue;
     }
     projects.push({
       projectCode: code,
-      categoryMajor: toText(row[COL.categoryMajor]),
-      projectName: toText(row[COL.projectName]),
-      approvalDate: toDateString(row[COL.approvalDate]),
-      category: toText(row[COL.category]),
-      owner: toText(row[COL.owner]),
-      budgetWan: toNumber(row[COL.budgetWan]),
-      stage: toText(row[COL.stage]),
-      content: toText(row[COL.content]),
-      demandDept: toText(row[COL.demandDept]),
-      demandRoom: toText(row[COL.demandRoom]),
-      demandOwner: toText(row[COL.demandOwner]),
+      categoryMajor: toText(cell(row, col.categoryMajor)),
+      projectName: toText(cell(row, col.projectName)),
+      approvalDate: toDateString(cell(row, col.approvalDate)),
+      category: toText(cell(row, col.category)),
+      owner: toText(cell(row, col.owner)),
+      budgetWan: toNumber(cell(row, col.budgetWan)),
+      stage: toText(cell(row, col.stage)),
+      content: toText(cell(row, col.content)),
+      demandDept: toText(cell(row, col.demandDept)),
+      demandRoom: toText(cell(row, col.demandRoom)),
+      demandOwner: toText(cell(row, col.demandOwner)),
+      // 有值时覆盖数据库（在 importData 的 upsert 中处理），无值不动
+      planCutoverDate: toDateString(cell(row, col.planCutover)),
     });
     progress.push({
       projectCode: code,
-      progress: toText(row[COL.progress]),
-      purchaseRate: toNumber(row[COL.purchaseRate]),
-      disclosure: toText(row[COL.disclosure]),
-      arrivalRate: toNumber(row[COL.arrivalRate]),
-      onlineHandover: toText(row[COL.onlineHandover]),
-      finalAcceptance: toText(row[COL.finalAcceptance]),
+      progress: toText(cell(row, col.progress)),
+      purchaseRate: toNumber(cell(row, col.purchaseRate)),
+      disclosure: toText(cell(row, col.disclosure)),
+      arrivalRate: toNumber(cell(row, col.arrivalRate)),
+      onlineHandover: toText(cell(row, col.onlineHandover)),
+      finalAcceptance: toText(cell(row, col.finalAcceptance)),
     });
   }
 

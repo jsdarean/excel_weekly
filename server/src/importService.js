@@ -31,8 +31,8 @@ export async function importData(pool, parsed, reportDate) {
         `INSERT INTO projects
            (project_code, category_major, project_name, approval_date,
             category, owner, budget_wan, stage, content,
-            demand_dept, demand_room, demand_owner)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            demand_dept, demand_room, demand_owner, plan_cutover_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            category_major = VALUES(category_major),
            project_name = VALUES(project_name),
@@ -44,10 +44,11 @@ export async function importData(pool, parsed, reportDate) {
            content = VALUES(content),
            demand_dept = VALUES(demand_dept),
            demand_room = VALUES(demand_room),
-           demand_owner = VALUES(demand_owner)`,
+           demand_owner = VALUES(demand_owner),
+           plan_cutover_date = IFNULL(VALUES(plan_cutover_date), plan_cutover_date)`,
         [p.projectCode, p.categoryMajor, p.projectName, p.approvalDate,
          p.category, p.owner, p.budgetWan, p.stage, p.content,
-         p.demandDept, p.demandRoom, p.demandOwner]
+         p.demandDept, p.demandRoom, p.demandOwner, p.planCutoverDate ?? null]
       );
       if (exist.length > 0) updated++;
       else inserted++;

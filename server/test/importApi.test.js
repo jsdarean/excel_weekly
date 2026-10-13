@@ -66,6 +66,20 @@ function buildBufferTwo(progress1 = '本周1', progress2 = '本周2') {
   return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
+// 带「计划割接上线时间」列（位于立项批复日期之后）的宽表
+const HEADER_WITH_CUTOVER = [
+  ...HEADER.slice(0, 5), '计划割接上线时间', ...HEADER.slice(5),
+];
+
+function buildBufferWithCutover(projectCode = 'P001', cutover = '2026-10-01') {
+  const row = [...buildRow({ projectCode })];
+  row.splice(5, 0, cutover);
+  const ws = xlsx.utils.aoa_to_sheet([HEADER_WITH_CUTOVER, row]);
+  const wb = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(wb, ws, '测试');
+  return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
 describe('POST /api/import', () => {
   beforeEach(resetDb);
 
@@ -160,6 +174,37 @@ describe('POST /api/import', () => {
     expect(rows[0]).toEqual({
       demand_dept: '政企部', demand_room: '核心网室', demand_owner: '赵六',
     });
+  });
+
+  it('计划割接上线时间：文件有值则覆盖数据库，文件无此列则不动数据库', async () => {
+    const app = createApp();
+    const pool = getPool();
+    // 预置项目，库中已有割接时间
+    await pool.query(
+      "INSERT INTO projects (project_code, project_name, plan_cutover_date) VALUES ('P001', '项目甲', '2026-05-01')"
+    );
+
+    // 文件带新值 → 覆盖
+    const res1 = await request(app)
+      .post('/api/import')
+      .field('report_date', '2026-08-21')
+      .attach('file', buildBufferWithCutover('P001', '2026-10-01'), 'weekly.xlsx');
+    expect(res1.status).toBe(200);
+    const [r1] = await pool.query(
+      "SELECT plan_cutover_date FROM projects WHERE project_code = 'P001'"
+    );
+    expect(r1[0].plan_cutover_date).toBe('2026-10-01');
+
+    // 文件没有该列 → 保持库中值
+    const res2 = await request(app)
+      .post('/api/import')
+      .field('report_date', '2026-08-28')
+      .attach('file', buildBuffer(), 'weekly.xlsx');
+    expect(res2.status).toBe(200);
+    const [r2] = await pool.query(
+      "SELECT plan_cutover_date FROM projects WHERE project_code = 'P001'"
+    );
+    expect(r2[0].plan_cutover_date).toBe('2026-10-01');
   });
 
   it('缺少文件返回 400；report_date 格式非法返回 400', async () => {

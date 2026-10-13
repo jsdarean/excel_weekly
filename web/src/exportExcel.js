@@ -20,10 +20,10 @@ function toStr(v) {
   return v === null || v === undefined ? '' : String(v);
 }
 
-// 生成导出二维数组：序号 + 页面 15 列 + 下周进展空列
+// 生成导出二维数组：序号 + 页面列（立项批复日期后含计划割接上线时间）+ 下周进展空列
 export function buildExportData(rows, reportDate) {
   const header = [
-    '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '分类',
+    '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '计划割接上线时间', '分类',
     '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
     `周进展(${reportDate})`, `周进展(${nextFriday(reportDate)})`,
     '主设备请购完成率', '是否交底', '主设备到货完成率', '是否上线交维',
@@ -35,6 +35,7 @@ export function buildExportData(rows, reportDate) {
     toStr(r.project_code),
     toStr(r.project_name),
     toStr(r.approval_date),
+    toStr(r.plan_cutover_date),
     toStr(r.category),
     toStr(r.owner),
     toNum(r.budget_wan),
@@ -99,8 +100,8 @@ const DATA_ROW_HEIGHT = 80;
 // 批量邮件/关注项目行的底色（与项目列表页底色一致）
 const HIGHLIGHT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3D6' } };
 
-// 列宽（A-Q，参考文件实测）
-const COL_WIDTHS = [3.86, 9.6, 15.73, 30.07, 12.2, 10.46, 8.2, 9.33, 16.2,
+// 列宽（A-V，参考文件实测；F 为计划割接上线时间）
+const COL_WIDTHS = [3.86, 9.6, 15.73, 30.07, 12.2, 12.2, 10.46, 8.2, 9.33, 16.2,
   19.13, 22.33, 22.33, 12.86, 8.73, 12.86, 8.73, 12.86, 12.86, 12.86, 10.46];
 
 // 每列数据区对齐（参考文件实测）
@@ -110,21 +111,22 @@ const COL_ALIGN = [
   { horizontal: 'left', vertical: 'middle', wrapText: true },            // C 项目编码
   { horizontal: 'left', vertical: 'middle', wrapText: true },            // D 项目名称
   { horizontal: 'left', vertical: 'middle' },                            // E 立项批复日期
-  { horizontal: 'left', vertical: 'middle' },                            // F 分类
-  { horizontal: 'left', vertical: 'middle' },                            // G 工程责任人
-  { horizontal: 'center', vertical: 'middle' },                          // H 立项金额
-  { horizontal: 'left', vertical: 'middle' },                            // I 项目阶段
-  { horizontal: 'left', vertical: 'middle', wrapText: true },            // J 建设内容
-  { horizontal: 'left', vertical: 'middle', wrapText: true },            // K 周进展(本周)
-  { horizontal: 'left', vertical: 'middle', wrapText: true },            // L 周进展(下周)
-  { horizontal: 'center', vertical: 'middle' },                          // M 请购完成率
-  { horizontal: 'center', vertical: 'middle' },                          // N 是否交底
-  { horizontal: 'center', vertical: 'middle' },                          // O 到货完成率
-  { horizontal: 'center', vertical: 'middle' },                          // P 是否上线交维
-  { horizontal: 'center', vertical: 'middle' },                          // Q 是否竣工验收
-  { horizontal: 'left', vertical: 'middle', wrapText: true },            // R 需求部门
-  { horizontal: 'left', vertical: 'middle', wrapText: true },            // S 需求室
-  { horizontal: 'left', vertical: 'middle', wrapText: true },            // T 需求责任人
+  { horizontal: 'left', vertical: 'middle' },                            // F 计划割接上线时间
+  { horizontal: 'left', vertical: 'middle' },                            // G 分类
+  { horizontal: 'left', vertical: 'middle' },                            // H 工程责任人
+  { horizontal: 'center', vertical: 'middle' },                          // I 立项金额
+  { horizontal: 'left', vertical: 'middle' },                            // J 项目阶段
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // K 建设内容
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // L 周进展(本周)
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // M 周进展(下周)
+  { horizontal: 'center', vertical: 'middle' },                          // N 请购完成率
+  { horizontal: 'center', vertical: 'middle' },                          // O 是否交底
+  { horizontal: 'center', vertical: 'middle' },                          // P 到货完成率
+  { horizontal: 'center', vertical: 'middle' },                          // Q 是否上线交维
+  { horizontal: 'center', vertical: 'middle' },                          // R 是否竣工验收
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // S 需求部门
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // T 需求室
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // U 需求责任人
 ];
 
 // 表头居中，但 D/E 列参考文件为左对齐
@@ -134,11 +136,11 @@ const HEADER_ALIGN = COL_ALIGN.map((a, i) =>
     : { horizontal: 'center', vertical: 'middle', wrapText: true }
 );
 
-const PERCENT_COLS = [13, 15]; // M、O 列（1 基）
+const PERCENT_COLS = [14, 16]; // N、P 列（1 基）
 
-// 附件版本常量：删除 L 列（下周进展）后，百分比列变为 L、N
-const ATTACHMENT_COL_WIDTHS = COL_WIDTHS.filter((_, i) => i !== 11);
-const ATTACHMENT_COL_ALIGN = COL_ALIGN.filter((_, i) => i !== 11);
+// 附件版本常量：删除 F 列（计划割接上线时间）与 M 列（下周进展）后，百分比列仍为 L、N
+const ATTACHMENT_COL_WIDTHS = COL_WIDTHS.filter((_, i) => i !== 5 && i !== 12);
+const ATTACHMENT_COL_ALIGN = COL_ALIGN.filter((_, i) => i !== 5 && i !== 12);
 const ATTACHMENT_HEADER_ALIGN = ATTACHMENT_COL_ALIGN.map((a, i) =>
   i === 3 || i === 4
     ? { horizontal: 'left', vertical: 'middle', wrapText: true }

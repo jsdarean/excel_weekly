@@ -46,6 +46,7 @@ describe('parseWeeklyReport', () => {
         approvalDate: '2025-09-09', category: '基础能力', owner: '张三',
         budgetWan: 320, stage: '项目实施阶段', content: '建设内容甲',
         demandDept: null, demandRoom: null, demandOwner: null,
+        planCutoverDate: null,
       },
     ]);
     expect(r.progress).toEqual([
@@ -83,15 +84,34 @@ describe('parseWeeklyReport', () => {
     expect(() => parseWeeklyReport(buf)).toThrow(/项目编码/);
   });
 
-  it('L 列表头不含"周进展"时抛出指明缺失列的错误', () => {
+  it('表头不含"周进展"列时抛出指明缺失列的错误', () => {
     const header = [
       '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '分类',
       '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
-      '周进展(20260814)', '备注', '主设备请购完成率',
+      '备注', '备注2', '主设备请购完成率',
       '是否交底', '主设备到货完成率', '是否上线交维', '是否竣工验收',
     ];
     const buf = buildBufferWithHeader(header);
     expect(() => parseWeeklyReport(buf)).toThrow(/周进展/);
+  });
+
+  it('文件含「计划割接上线时间」列（任意位置）时解析该列，旧格式文件解析为 null', () => {
+    const header = [
+      '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '计划割接上线时间', '分类',
+      '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
+      '周进展(20260814)', '周进展（20260821）', '主设备请购完成率',
+      '是否交底', '主设备到货完成率', '是否上线交维', '是否竣工验收',
+    ];
+    const row = [1, '业务网', 'P001', '项目甲', '2025-09-09', '2026-10-01', '基础能力',
+      '张三', 320, '项目实施阶段', '内容甲', '上周', '本周进展', 0.85, '是', 0.8, '否', '否'];
+    const r = parseWeeklyReport(buildBufferWithHeader(header, [row]));
+    expect(r.projects[0].planCutoverDate).toBe('2026-10-01');
+    expect(r.projects[0].approvalDate).toBe('2025-09-09');
+    expect(r.progress[0].progress).toBe('本周进展');
+
+    // 旧格式（无该列）→ null
+    const old = parseWeeklyReport(buildBuffer([row.filter((_, i) => i !== 5)]));
+    expect(old.projects[0].planCutoverDate).toBeNull();
   });
 
   it('支持 CSV：UTF-8（含/不含 BOM）与 GBK 编码均可解析', () => {
