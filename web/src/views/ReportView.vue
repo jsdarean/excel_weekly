@@ -209,14 +209,68 @@ async function downloadAttachment() {
   }
 }
 
+// ===== 剪贴板降级工具 =====
+// navigator.clipboard 仅在安全上下文（HTTPS / localhost）下存在；
+// 外网 HTTP 访问时为 undefined，必须用 document.execCommand('copy') 兜底。
+
+// 纯文本复制（HTTP 兼容）
+function copyPlainText(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+// 富文本复制（text/html + text/plain 双格式，HTTP 兼容）：
+// 选中一个临时 contenteditable 节点，在用户手势内用 copy 事件覆盖写入两种 MIME 格式
+function copyRichText(html, plain) {
+  const container = document.createElement('div');
+  container.contentEditable = 'true';
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.opacity = '0';
+  container.innerHTML = html;
+  document.body.appendChild(container);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  sel.addRange(range);
+  const onCopy = (e) => {
+    e.clipboardData.setData('text/html', html);
+    e.clipboardData.setData('text/plain', plain);
+    e.preventDefault();
+  };
+  document.addEventListener('copy', onCopy);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  document.removeEventListener('copy', onCopy);
+  sel.removeAllRanges();
+  document.body.removeChild(container);
+  return ok;
+}
+
 async function copy() {
+  const text = generated.value;
+  let ok = false;
   try {
-    await navigator.clipboard.writeText(generated.value);
-    copyTip.value = '已复制';
-    setTimeout(() => { copyTip.value = ''; }, 2000);
-  } catch {
-    copyTip.value = '复制失败，请手动选择';
-  }
+    // 安全上下文优先 Clipboard API；HTTP 环境（该 API 不存在）走 execCommand 降级
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch { /* 降级到 execCommand */ }
+  if (!ok) ok = copyPlainText(text);
+  copyTip.value = ok ? '已复制' : '复制失败，请手动选择';
+  if (ok) setTimeout(() => { copyTip.value = ''; }, 2000);
 }
 
 function escapeHtml(s) {
@@ -253,27 +307,26 @@ const generatedEmailHtml = computed(() => {
 });
 
 async function copyAsEmail() {
+  const html = generatedEmailHtml.value;
+  const plain = generated.value;
+  let copied = '';
   try {
-    const html = generatedEmailHtml.value;
-    const plain = generated.value;
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([plain], { type: 'text/plain' }),
-      }),
-    ]);
-    emailCopyTip.value = '已复制邮件格式';
-  } catch {
-    // 不支持 ClipboardItem 时回退到纯文本
-    try {
-      await navigator.clipboard.writeText(generated.value);
-      emailCopyTip.value = '已复制纯文本';
-    } catch {
-      emailCopyTip.value = '复制失败';
-      return;
+    // 安全上下文：Clipboard API 写入 HTML + 纯文本双格式
+    if (navigator.clipboard && window.isSecureContext && typeof ClipboardItem === 'function') {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ]);
+      copied = '已复制邮件格式';
     }
-  }
-  setTimeout(() => { emailCopyTip.value = ''; }, 2000);
+  } catch { /* API 异常，继续降级 */ }
+  // HTTP 环境：execCommand 富文本降级（仍是邮件格式）；再不行退纯文本
+  if (!copied && copyRichText(html, plain)) copied = '已复制邮件格式';
+  if (!copied && copyPlainText(plain)) copied = '已复制纯文本';
+  emailCopyTip.value = copied || '复制失败';
+  if (copied) setTimeout(() => { emailCopyTip.value = ''; }, 2000);
 }
 
 onMounted(async () => {
