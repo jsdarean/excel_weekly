@@ -5,6 +5,9 @@ export function renderTemplate(template, data) {
   const flat = {
     '项目总数': data.total,
     '拟取消数': data.cancelled,
+    '在建项目总数': data.building,
+    '近1周交付项目数': data.delivered1w,
+    '近2周交付项目数': data.delivered2w,
   };
   for (const [cat, c] of Object.entries(data.categories)) {
     flat[`${cat}_项目数`] = c.count;
@@ -28,6 +31,20 @@ export async function buildReportData(pool) {
   const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM projects');
   const [[{ cancelled }]] = await pool.query(
     "SELECT COUNT(*) AS cancelled FROM projects WHERE category = '拟取消'"
+  );
+  // 在建项目总数：剔除终验归档阶段与拟取消类别
+  const [[{ n: building }]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM projects
+     WHERE COALESCE(stage, '') <> '终验归档' AND COALESCE(category, '') <> '拟取消'`
+  );
+  // 近N周交付：阶段变为终验归档的时间在最近N周内（stage_changed_at 由导入流程在阶段变化时写入）
+  const [[{ n: w1 }]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM projects
+     WHERE stage = '终验归档' AND stage_changed_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK)`
+  );
+  const [[{ n: w2 }]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM projects
+     WHERE stage = '终验归档' AND stage_changed_at >= DATE_SUB(NOW(), INTERVAL 2 WEEK)`
   );
 
   const [catRows] = await pool.query(
@@ -81,5 +98,5 @@ export async function buildReportData(pool) {
     };
   }
 
-  return { total, cancelled, categories };
+  return { total, cancelled, building, delivered1w: w1, delivered2w: w2, categories };
 }

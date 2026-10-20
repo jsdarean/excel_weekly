@@ -190,6 +190,8 @@ async function applyChanges(pool, toInsert, confirmedUpdates) {
     if (existing[0].stage !== p.stage) {
       updates.push('stage = ?');
       params.push(p.stage);
+      // 记录阶段变更时间，支撑"近N周交付项目数"统计
+      updates.push('stage_changed_at = NOW()');
     }
     if (p.approvalDate && !existing[0].approval_date) {
       updates.push('approval_date = ?');
@@ -300,6 +302,8 @@ router.post('/', upload.single('file'), async (req, res) => {
         if (existing[0].stage !== p.stage) {
           updates.push('stage = ?');
           params.push(p.stage);
+          // 记录阶段变更时间，支撑"近N周交付项目数"统计
+          updates.push('stage_changed_at = NOW()');
         }
         if (p.approvalDate && !existing[0].approval_date) {
           updates.push('approval_date = ?');

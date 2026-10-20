@@ -9,6 +9,9 @@ describe('renderTemplate', () => {
   const data = {
     total: 233,
     cancelled: 3,
+    building: 198,
+    delivered1w: 2,
+    delivered2w: 5,
     categories: {
       '收入相关': { count: 24, pct: 10.3, budgetYi: '7.24', highlights: '1、项目甲，进展一。\n2、项目乙，进展二。',
         stageCounts: { '项目实施阶段': 10, '勘察设计阶段': 14 } },
@@ -25,6 +28,14 @@ describe('renderTemplate', () => {
     expect(out).toBe(
       '总数233，取消3。收入相关（24个，占10.3%，约7.24亿元）\n1、项目甲，进展一。\n2、项目乙，进展二。'
     );
+  });
+
+  it('在建总数/近N周交付占位符替换', () => {
+    const out = renderTemplate(
+      '在建{{在建项目总数}}个，近1周交付{{近1周交付项目数}}个，近2周交付{{近2周交付项目数}}个',
+      data
+    );
+    expect(out).toBe('在建198个，近1周交付2个，近2周交付5个');
   });
 
   it('分类+阶段项目数：有数据替换为数值，无该阶段替换为 0，未知分类保留原文', () => {
@@ -140,6 +151,28 @@ describe('/api/report-templates 与 /api/report-preview', () => {
     const prev = await request(app).get(`/api/report-preview?template_id=${c.body.id}`);
     expect(prev.status).toBe(200);
     expect(prev.body.text).toBe('收入相关实施1个，收入相关验收0个，基础能力勘察1个');
+  });
+
+  it('预览支持 在建项目总数 / 近N周交付项目数 占位符（按 stage_changed_at 统计）', async () => {
+    const app = createApp();
+    const pool = getPool();
+    // P004：3天前交付；P005：10天前交付；P006：终验归档但无变更时间（存量数据，不计入）
+    await pool.query(
+      `INSERT INTO projects (project_code, project_name, category, stage, stage_changed_at)
+       VALUES ('P004', '项目丁', '收入相关', '终验归档', DATE_SUB(NOW(), INTERVAL 3 DAY)),
+              ('P005', '项目戊', '基础能力', '终验归档', DATE_SUB(NOW(), INTERVAL 10 DAY)),
+              ('P006', '项目己', '支撑后端', '终验归档', NULL)`
+    );
+    const c = await request(app)
+      .post('/api/report-templates')
+      .send({
+        name: 'D',
+        content: '总数{{项目总数}}，在建{{在建项目总数}}，近1周{{近1周交付项目数}}，近2周{{近2周交付项目数}}',
+      });
+    const prev = await request(app).get(`/api/report-preview?template_id=${c.body.id}`);
+    expect(prev.status).toBe(200);
+    // total=6；终验归档3个 + 拟取消1个（P003）→ 在建2；近1周=P004；近2周=P004+P005
+    expect(prev.body.text).toBe('总数6，在建2，近1周1，近2周2');
   });
 
   it('无模板时预览返回空文本；template_id 不存在返回 404', async () => {

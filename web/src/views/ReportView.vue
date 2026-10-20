@@ -49,19 +49,120 @@
       <div class="card-head">
         <h3>生成结果</h3>
         <div class="result-actions">
+          <button class="mode-btn" :class="{ active: previewMode === 'rich' }" @click="previewMode = 'rich'">富文本</button>
+          <button class="mode-btn" :class="{ active: previewMode === 'plain' }" @click="previewMode = 'plain'">纯文本</button>
           <button @click="copy">{{ copyTip || '复制纯文本' }}</button>
           <button @click="copyAsEmail">{{ emailCopyTip || '复制邮件格式' }}</button>
+          <button class="primary" :disabled="sending" @click="sendMail">
+            {{ sending ? '发送中…' : '一键发送' }}
+          </button>
         </div>
       </div>
-      <pre class="result">{{ generated }}</pre>
+      <p v-if="previewMode === 'rich'" class="hint">富文本可直接点击编辑，发送/复制以编辑后的内容为准。</p>
+      <iframe v-if="previewMode === 'rich'" ref="richFrame" class="rich-preview" :srcdoc="emailSrcdoc" @load="onRichFrameLoad"></iframe>
+      <pre v-else class="result">{{ generated }}</pre>
+      <p v-if="sendTip" class="ok-tip">{{ sendTip }}</p>
+    </div>
+
+    <div class="card mail-card">
+      <div class="card-head">
+        <h3>邮件发送设置</h3>
+      </div>
+      <div class="mail-config">
+        <label>邮件主题
+          <input type="text" v-model="mailSubject" :placeholder="defaultSubject(reportDate)" />
+        </label>
+        <label>邮件签名
+          <textarea v-model="mailSignature" rows="3" placeholder="留空则不附加签名"></textarea>
+        </label>
+        <p class="toolbar">
+          <button @click="saveMailConfig" :disabled="savingConfig">{{ savingConfig ? '保存中…' : '保存主题/签名' }}</button>
+          <span v-if="configTip" class="ok-tip">{{ configTip }}</span>
+        </p>
+      </div>
+
+      <div class="vip-head">
+        <h4>VIP 收件人</h4>
+        <div class="toolbar">
+          <button class="primary" @click="openVipForm(null)">新增收件人</button>
+          <button :disabled="vipImporting" @click="vipFileInput.click()">{{ vipImporting ? '导入中…' : '导入 Excel' }}</button>
+          <button @click="exportVip">导出 Excel</button>
+          <input ref="vipFileInput" type="file" accept=".xlsx,.xls" hidden @change="onVipImport" />
+        </div>
+      </div>
+      <p class="hint-tip">发送方式决定收件人在邮件中的位置（主送/抄送/密送），发送时按「姓名&lt;邮箱&gt;」格式组装；导入格式与导出一致。</p>
+      <div v-if="vipImportResult" class="import-result">
+        <p class="ok-tip">
+          导入完成：新增 {{ vipImportResult.added }} 条，跳过重复 {{ vipImportResult.skipped }} 条，失败 {{ vipImportResult.errors.length }} 条
+        </p>
+      </div>
+      <table class="vip-table">
+        <thead>
+          <tr><th>部门</th><th>职务</th><th>姓名</th><th>邮箱</th><th>发送方式</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in recipients" :key="r.id">
+            <td>{{ r.dept }}</td>
+            <td>{{ r.title }}</td>
+            <td>{{ r.name }}</td>
+            <td>{{ r.email }}</td>
+            <td>{{ r.send_type }}</td>
+            <td class="ops">
+              <button @click="openVipForm(r)">编辑</button>
+              <button @click="removeVip(r)">删除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="!recipients.length" class="empty">暂无 VIP 收件人，请点击「新增收件人」或导入 Excel。</p>
+
+      <div v-if="weeklyLogs.length" class="log-block">
+        <h4>发送记录</h4>
+        <table class="vip-table">
+          <thead>
+            <tr><th>时间</th><th>主题</th><th>主送</th><th>抄送</th><th>密送</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="l in weeklyLogs" :key="l.id">
+              <td class="num">{{ l.created_at }}</td>
+              <td>{{ l.subject }}</td>
+              <td class="num">{{ countAddr(l.to_addr) }}</td>
+              <td class="num">{{ countAddr(l.cc_addr) }}</td>
+              <td class="num">{{ countAddr(l.bcc_addr) }}</td>
+              <td>{{ l.status }}<span v-if="l.error" class="error">（{{ l.error }}）</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div v-if="vipEditing" class="modal">
+      <div class="dialog">
+        <h3>{{ vipEditing.id ? '编辑收件人' : '新增收件人' }}</h3>
+        <label>部门 <input type="text" v-model="vipEditing.dept" /></label>
+        <label>职务 <input type="text" v-model="vipEditing.title" /></label>
+        <label>姓名 <input type="text" v-model="vipEditing.name" /></label>
+        <label>邮箱 <input type="email" v-model="vipEditing.email" /></label>
+        <label>发送方式
+          <select v-model="vipEditing.sendType">
+            <option v-for="t in ['主送', '抄送', '密送']" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </label>
+        <p v-if="vipFormError" class="error">{{ vipFormError }}</p>
+        <div class="dialog-actions">
+          <button class="primary" @click="saveVip">保存</button>
+          <button @click="vipEditing = null">取消</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { api } from '../api.js';
 import { exportAttachment } from '../exportExcel.js';
+import { buildEmailShell, signatureHtml, defaultSubject, renderWeeklyBodyHtml } from '../weeklyMail.js';
 
 const templates = ref([]);
 const currentId = ref(null);
@@ -74,10 +175,30 @@ const savedTip = ref('');
 const copyTip = ref('');
 const emailCopyTip = ref('');
 
+// 邮件发送：预览模式 / 主题签名配置 / VIP 收件人 / 发送
+const previewMode = ref('rich');
+const richFrame = ref(null);
+// 用户在富文本里的直接编辑结果（null 表示未编辑，用生成值）
+const editedHtml = ref(null);
+const mailSubject = ref('');
+const mailSignature = ref('');
+const savingConfig = ref(false);
+const configTip = ref('');
+const reportDate = ref('');
+const recipients = ref([]);
+const vipEditing = ref(null);
+const vipFormError = ref('');
+const vipFileInput = ref(null);
+const vipImporting = ref(false);
+const vipImportResult = ref(null);
+const sending = ref(false);
+const sendTip = ref('');
+const weeklyLogs = ref([]);
+
 const placeholderTip =
-  '在此粘贴模板，使用 {{项目总数}}、{{拟取消数}}、{{收入相关_项目数}}、{{收入相关_占比}}、{{收入相关_金额亿}}、{{收入相关_重点进展}}、{{收入相关_项目实施阶段_项目数}} 等占位符';
+  '在此粘贴模板，使用 {{项目总数}}、{{在建项目总数}}、{{近1周交付项目数}}、{{近2周交付项目数}}、{{拟取消数}}、{{收入相关_项目数}}、{{收入相关_占比}}、{{收入相关_金额亿}}、{{收入相关_重点进展}}、{{收入相关_项目实施阶段_项目数}} 等占位符';
 const hintText =
-  '可用占位符：{{项目总数}} {{拟取消数}}；每个分类（收入相关/基础能力/支撑后端）支持 {{分类名_项目数}} {{分类名_占比}} {{分类名_金额亿}} {{分类名_重点进展}}，以及按阶段统计的 {{分类名_阶段名_项目数}}（如 {{基础能力_勘察设计阶段_项目数}}，阶段名取自项目基础信息，无对应项目时替换为 0）。模板最多保存 5 个。';
+  '可用占位符：{{项目总数}} {{在建项目总数}}（剔除终验归档阶段与拟取消类别）{{近1周交付项目数}} {{近2周交付项目数}}（按阶段变更为终验归档的时间统计）{{拟取消数}}；每个分类（收入相关/基础能力/支撑后端）支持 {{分类名_项目数}} {{分类名_占比}} {{分类名_金额亿}} {{分类名_重点进展}}，以及按阶段统计的 {{分类名_阶段名_项目数}}（如 {{基础能力_勘察设计阶段_项目数}}，阶段名取自项目基础信息，无对应项目时替换为 0）。模板最多保存 5 个。';
 
 // 模板高亮：底层 pre 把 {{占位符}} 标红，上层 textarea 文字透明（光标可见）
 const ta = ref(null);
@@ -273,41 +394,33 @@ async function copy() {
   if (ok) setTimeout(() => { copyTip.value = ''; }, 2000);
 }
 
-function escapeHtml(s) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 const generatedEmailHtml = computed(() => {
   if (!generated.value) return '';
-  const lines = escapeHtml(generated.value).split('\n');
-  const out = [];
-  let inList = false;
-  for (const line of lines) {
-    const heading = line.match(/^([一二三四五六七八九十]+、)(.*)$/);
-    const item = line.match(/^(\d+、)(.*)$/);
-    if (heading) {
-      if (inList) { out.push('</ul>'); inList = false; }
-      out.push(`<h3 style="margin:14px 0 6px 0;font-size:12pt;color:#000;font-weight:bold;">${heading[1]}${heading[2]}</h3>`);
-    } else if (item) {
-      if (!inList) { out.push('<ul style="margin:0 0 8px 20px;padding:0;">'); inList = true; }
-      out.push(`<li style="margin-bottom:4px;line-height:1.6;font-size:12pt;color:#000;">${item[2]}</li>`);
-    } else if (line.trim() === '') {
-      if (inList) { out.push('</ul>'); inList = false; }
-      out.push('<br>');
-    } else {
-      if (inList) { out.push('</ul>'); inList = false; }
-      out.push(`<p style="margin:0 0 8px 0;line-height:1.6;font-size:12pt;color:#000;">${line}</p>`);
-    }
-  }
-  if (inList) out.push('</ul>');
-  return `<div style="font-family:宋体,SimSun,sans-serif;font-size:12pt;color:#000;">${out.join('')}</div>`;
+  const body = `<div style="font-family:'Microsoft YaHei','PingFang SC',宋体,sans-serif;">${renderWeeklyBodyHtml(generated.value)}</div>`;
+  // 商务外壳（标题条+日期）+ 正文 + 签名，与发送出去的邮件一致
+  return buildEmailShell(body + signatureHtml(mailSignature.value), { date: reportDate.value });
 });
 
+// 富文本 iframe：contenteditable 可直接编辑，编辑内容实时同步到 editedHtml
+const emailSrcdoc = computed(() =>
+  generatedEmailHtml.value
+    ? `<!DOCTYPE html><html><body contenteditable="true" style="margin:0;padding:24px;background:#f3f4f6;">${generatedEmailHtml.value}</body></html>`
+    : ''
+);
+function onRichFrameLoad() {
+  const doc = richFrame.value?.contentDocument;
+  if (!doc) return;
+  doc.addEventListener('input', () => {
+    editedHtml.value = doc.body.innerHTML;
+  });
+}
+// 重新生成/签名/日期变化 → 丢弃旧编辑，以新内容为准
+watch(generatedEmailHtml, () => { editedHtml.value = null; });
+// 发送/复制统一取编辑后的内容（未编辑时用生成值）
+const currentEmailHtml = computed(() => editedHtml.value ?? generatedEmailHtml.value);
+
 async function copyAsEmail() {
-  const html = generatedEmailHtml.value;
+  const html = currentEmailHtml.value;
   const plain = generated.value;
   let copied = '';
   try {
@@ -329,9 +442,141 @@ async function copyAsEmail() {
   if (copied) setTimeout(() => { emailCopyTip.value = ''; }, 2000);
 }
 
+async function loadWeeklyLogs() {
+  try {
+    weeklyLogs.value = (await api.getWeeklyMailLogs()).logs;
+  } catch {
+    // 记录加载失败不影响主流程
+  }
+}
+
+async function sendMail() {
+  if (!generated.value) {
+    window.alert('请先生成预览');
+    return;
+  }
+  const to = recipients.value.filter((r) => r.send_type === '主送');
+  const cc = recipients.value.filter((r) => r.send_type === '抄送');
+  const bcc = recipients.value.filter((r) => r.send_type === '密送');
+  if (!window.confirm(
+    `确认发送周报邮件？\n主题：${mailSubject.value.trim() || defaultSubject(reportDate.value)}\n主送 ${to.length} 人，抄送 ${cc.length} 人，密送 ${bcc.length} 人`
+  )) return;
+  sending.value = true;
+  sendTip.value = '';
+  try {
+    const res = await api.sendWeeklyMail({
+      subject: mailSubject.value.trim() || defaultSubject(reportDate.value),
+      html: currentEmailHtml.value,
+      text: generated.value,
+    });
+    sendTip.value = res.message || '发送成功';
+  } catch (e) {
+    sendTip.value = e.message;
+  } finally {
+    sending.value = false;
+    await loadWeeklyLogs();
+  }
+}
+
+// ===== 邮件发送设置 =====
+
+async function loadMailConfig() {
+  try {
+    const c = await api.getWeeklyMailConfig();
+    mailSubject.value = c.subject ?? '';
+    mailSignature.value = c.signature ?? '';
+  } catch {
+    // 配置加载失败不影响主流程
+  }
+}
+
+async function saveMailConfig() {
+  savingConfig.value = true;
+  configTip.value = '';
+  try {
+    await api.saveWeeklyMailConfig({ subject: mailSubject.value, signature: mailSignature.value });
+    configTip.value = '已保存';
+    setTimeout(() => { configTip.value = ''; }, 2000);
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    savingConfig.value = false;
+  }
+}
+
+async function loadVip() {
+  try {
+    recipients.value = (await api.listVipRecipients()).recipients;
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+
+function openVipForm(r) {
+  vipFormError.value = '';
+  vipEditing.value = r
+    ? { id: r.id, dept: r.dept ?? '', title: r.title ?? '', name: r.name, email: r.email, sendType: r.send_type }
+    : { id: null, dept: '', title: '', name: '', email: '', sendType: '主送' };
+}
+
+async function saveVip() {
+  vipFormError.value = '';
+  try {
+    const { id, ...body } = vipEditing.value;
+    if (id) await api.updateVipRecipient(id, body);
+    else await api.createVipRecipient(body);
+    vipEditing.value = null;
+    await loadVip();
+  } catch (e) {
+    vipFormError.value = e.message;
+  }
+}
+
+async function removeVip(r) {
+  if (!window.confirm(`确认删除 VIP 收件人「${r.name}」？`)) return;
+  try {
+    await api.deleteVipRecipient(r.id);
+    await loadVip();
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+
+async function onVipImport(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  vipImporting.value = true;
+  vipImportResult.value = null;
+  try {
+    vipImportResult.value = await api.importVipRecipients(file);
+    await loadVip();
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    vipImporting.value = false;
+  }
+}
+
+function exportVip() {
+  const a = document.createElement('a');
+  a.href = '/api/vip-recipients/export';
+  a.download = 'vip_recipients.xlsx';
+  a.click();
+}
+
+// 发送记录中的地址串（顿号分隔）统计人数
+function countAddr(s) {
+  return s ? String(s).split('、').filter(Boolean).length : 0;
+}
+
 onMounted(async () => {
   try {
     await load();
+    // 周报日期（外壳日期/默认主题用）：取最近一次周报导入日期
+    const dates = await api.getReportDates();
+    reportDate.value = dates.dates?.[0] ?? '';
+    await Promise.all([loadMailConfig(), loadVip(), loadWeeklyLogs()]);
   } catch (e) {
     error.value = e.message;
   }
@@ -391,6 +636,70 @@ onMounted(async () => {
   white-space: pre-wrap;
   margin: 0;
 }
-.result-actions { display: flex; gap: 12px; }
+.result-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .report-actions { display: flex; align-items: center; gap: 12px; }
+
+/* 富文本预览：iframe 隔离邮件样式 */
+.rich-preview {
+  width: 100%;
+  min-height: 480px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: #f3f4f6;
+}
+.mode-btn { opacity: 0.6; }
+.mode-btn.active { opacity: 1; border-color: var(--primary); color: var(--primary); }
+.ok-tip { font-size: 13px; color: #16a34a; margin: 8px 0 0; }
+
+/* 邮件发送设置 */
+.mail-config { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.mail-config label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.mail-config label input,
+.mail-config label textarea { flex: 1; }
+.vip-head { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 4px; }
+.vip-head h4, .log-block h4 { margin: 0; font-size: 15px; }
+.toolbar { display: flex; gap: 12px; align-items: center; margin: 0; }
+.hint-tip { font-size: 12px; color: var(--ink-mute); margin: 4px 0 12px; }
+.vip-table { width: 100%; margin-bottom: 8px; }
+.vip-table th, .vip-table td { text-align: center; }
+.ops { display: flex; gap: 8px; justify-content: center; }
+.empty { text-align: center; color: var(--ink-mute); font-size: 14px; padding: 12px 0; }
+.log-block { margin-top: 20px; }
+.log-block h4 { margin-bottom: 10px; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 37, 61, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog {
+  background: var(--canvas);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 360px;
+}
+.dialog label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.dialog label input,
+.dialog label select { flex: 1; }
+.dialog-actions { display: flex; gap: 12px; margin-top: 8px; }
 </style>

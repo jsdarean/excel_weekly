@@ -207,6 +207,40 @@ describe('POST /api/import', () => {
     expect(r2[0].plan_cutover_date).toBe('2026-10-01');
   });
 
+  it('导入时项目阶段变化记录 stage_changed_at；阶段不变则不更新时间戳', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query(
+      "INSERT INTO projects (project_code, project_name, stage) VALUES ('P001', '项目甲', '项目实施阶段')"
+    );
+
+    // 第一次导入：阶段 实施 → 终验归档（变化）
+    const buf1 = buildBuffer(buildRow({ stage: '终验归档阶段' }));
+    const res1 = await request(app)
+      .post('/api/import')
+      .field('report_date', '2026-08-21')
+      .attach('file', buf1, 'weekly.xlsx');
+    expect(res1.status).toBe(200);
+    const [r1] = await pool.query(
+      "SELECT stage, stage_changed_at FROM projects WHERE project_code = 'P001'"
+    );
+    expect(r1[0].stage).toBe('终验归档阶段');
+    expect(r1[0].stage_changed_at).toBeTruthy();
+    const t1 = r1[0].stage_changed_at;
+
+    // 第二次导入：阶段不变 → 时间戳保持
+    const buf2 = buildBuffer(buildRow({ stage: '终验归档阶段' }));
+    const res2 = await request(app)
+      .post('/api/import')
+      .field('report_date', '2026-08-28')
+      .attach('file', buf2, 'weekly.xlsx');
+    expect(res2.status).toBe(200);
+    const [r2] = await pool.query(
+      "SELECT stage_changed_at FROM projects WHERE project_code = 'P001'"
+    );
+    expect(r2[0].stage_changed_at).toBe(t1);
+  });
+
   it('缺少文件返回 400；report_date 格式非法返回 400', async () => {
     const noFile = await request(createApp()).post('/api/import');
     expect(noFile.status).toBe(400);
