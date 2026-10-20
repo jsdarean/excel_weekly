@@ -157,7 +157,39 @@ export const api = {
       body: JSON.stringify({ projectCode: code }),
     }),
   getMailLogs: () => request('/api/bulk-mail/logs'),
-  getMailCcList: () => request('/api/bulk-mail/cc-list'),
+  listVipRecipients: () => request('/api/vip-recipients'),
+  createVipRecipient: (r) =>
+    request('/api/vip-recipients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(r),
+    }),
+  updateVipRecipient: (id, r) =>
+    request(`/api/vip-recipients/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(r),
+    }),
+  deleteVipRecipient: (id) => request(`/api/vip-recipients/${id}`, { method: 'DELETE' }),
+  importVipRecipients(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request('/api/vip-recipients/import', { method: 'POST', body: fd });
+  },
+  getWeeklyMailConfig: () => request('/api/weekly-mail/config'),
+  saveWeeklyMailConfig: (c) =>
+    request('/api/weekly-mail/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(c),
+    }),
+  sendWeeklyMail: (body) =>
+    request('/api/weekly-mail/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  getWeeklyMailLogs: () => request('/api/weekly-mail/logs'),  getMailCcList: () => request('/api/bulk-mail/cc-list'),
   saveMailCcList: (list) =>
     request('/api/bulk-mail/cc-list', {
       method: 'PUT',

@@ -41,6 +41,7 @@ export async function initDatabase() {
     demand_room VARCHAR(128),
     demand_owner VARCHAR(64),
     plan_cutover_date DATE NULL,
+    stage_changed_at DATETIME NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
@@ -69,6 +70,14 @@ export async function initDatabase() {
   );
   if (cutoverCol.length === 0) {
     await p.query('ALTER TABLE projects ADD COLUMN plan_cutover_date DATE NULL');
+  }
+  // 兼容旧表：阶段变更时间（阶段发生变化时由导入流程写入，用于"近N周交付项目数"统计）
+  const [stageChangedCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = 'stage_changed_at'`
+  );
+  if (stageChangedCol.length === 0) {
+    await p.query('ALTER TABLE projects ADD COLUMN stage_changed_at DATETIME NULL');
   }
   await p.query(`CREATE TABLE IF NOT EXISTS weekly_progress (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -244,6 +253,35 @@ export async function initDatabase() {
     email VARCHAR(128) NOT NULL,
     enabled TINYINT(1) NOT NULL DEFAULT 1,
     sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  // 周报邮件 VIP 收件人（send_type：主送/抄送/密送）
+  await p.query(`CREATE TABLE IF NOT EXISTS vip_recipients (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dept VARCHAR(128),
+    title VARCHAR(16),
+    name VARCHAR(64) NOT NULL,
+    email VARCHAR(128) NOT NULL,
+    send_type VARCHAR(8) NOT NULL DEFAULT '主送',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+  // 周报邮件配置（单行，id 固定为 1；主题留空时前端按默认规则生成）
+  await p.query(`CREATE TABLE IF NOT EXISTS weekly_mail_config (
+    id INT PRIMARY KEY,
+    subject VARCHAR(255),
+    signature TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+  // 周报邮件发送记录
+  await p.query(`CREATE TABLE IF NOT EXISTS weekly_mail_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subject VARCHAR(255),
+    to_addr TEXT,
+    cc_addr TEXT,
+    bcc_addr TEXT,
+    status VARCHAR(16) NOT NULL,
+    error TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 }

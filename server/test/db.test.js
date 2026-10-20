@@ -18,8 +18,11 @@ describe('initDatabase', () => {
       'project_contacts',
       'projects',
       'report_templates',
+      'vip_recipients',
       'watch_progress',
       'watched_projects',
+      'weekly_mail_config',
+      'weekly_mail_logs',
       'weekly_progress',
     ]);
   });
