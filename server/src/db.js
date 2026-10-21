@@ -151,6 +151,8 @@ export async function initDatabase() {
     with_attachment TINYINT(1) NOT NULL DEFAULT 0,
     mail_title VARCHAR(128) NULL,
     mail_subtitle VARCHAR(255) NULL,
+    mail_subject VARCHAR(255) NULL,
+    mail_signature TEXT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
@@ -170,14 +172,19 @@ export async function initDatabase() {
   if (attachCol.length === 0) {
     await p.query('ALTER TABLE report_templates ADD COLUMN with_attachment TINYINT(1) NOT NULL DEFAULT 0');
   }
-  // 兼容旧表：富文本邮件标题/副标题（留空用默认：省本部重点工程项目进展 / 周报日期）
-  const [mailTitleCol] = await p.query(
-    `SELECT 1 FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = 'mail_title'`
-  );
-  if (mailTitleCol.length === 0) {
-    await p.query('ALTER TABLE report_templates ADD COLUMN mail_title VARCHAR(128) NULL');
-    await p.query('ALTER TABLE report_templates ADD COLUMN mail_subtitle VARCHAR(255) NULL');
+  // 兼容旧表：富文本邮件标题/副标题/主题/签名（均按模板绑定；留空用默认）
+  for (const [col, ddl] of [
+    ['mail_title', 'ALTER TABLE report_templates ADD COLUMN mail_title VARCHAR(128) NULL'],
+    ['mail_subtitle', 'ALTER TABLE report_templates ADD COLUMN mail_subtitle VARCHAR(255) NULL'],
+    ['mail_subject', 'ALTER TABLE report_templates ADD COLUMN mail_subject VARCHAR(255) NULL'],
+    ['mail_signature', 'ALTER TABLE report_templates ADD COLUMN mail_signature TEXT NULL'],
+  ]) {
+    const [exists] = await p.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = ?`,
+      [col]
+    );
+    if (exists.length === 0) await p.query(ddl);
   }
   // 项目关联人（需求侧联系人）：一个项目可有多名关联人
   // send_to/send_cc/send_bcc 分别表示邮件主送/抄送/密送
@@ -328,6 +335,7 @@ export async function initDatabase() {
   // 周报邮件发送记录
   await p.query(`CREATE TABLE IF NOT EXISTS weekly_mail_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    template_id INT NOT NULL DEFAULT 0,
     subject VARCHAR(255),
     to_addr TEXT,
     cc_addr TEXT,
@@ -337,12 +345,19 @@ export async function initDatabase() {
     error TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
-  // 兼容旧表：附件名记录列
+  // 兼容旧表：附件名/模板记录列
   const [wkAttachCol] = await p.query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = 'weekly_mail_logs' AND column_name = 'attachment'`
   );
   if (wkAttachCol.length === 0) {
     await p.query('ALTER TABLE weekly_mail_logs ADD COLUMN attachment VARCHAR(255) NULL');
+  }
+  const [wkTplCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'weekly_mail_logs' AND column_name = 'template_id'`
+  );
+  if (wkTplCol.length === 0) {
+    await p.query('ALTER TABLE weekly_mail_logs ADD COLUMN template_id INT NOT NULL DEFAULT 0');
   }
 }

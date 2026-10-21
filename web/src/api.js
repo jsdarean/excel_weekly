@@ -183,20 +183,13 @@ export const api = {
     fd.append('file', file);
     return request(`/api/vip-recipients/import${buildQuery({ template_id: templateId })}`, { method: 'POST', body: fd });
   },
-  getWeeklyMailConfig: () => request('/api/weekly-mail/config'),
-  saveWeeklyMailConfig: (c) =>
-    request('/api/weekly-mail/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(c),
-    }),
   sendWeeklyMail: (body) =>
     request('/api/weekly-mail/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
-  getWeeklyMailLogs: () => request('/api/weekly-mail/logs'),  getMailCcList: () => request('/api/bulk-mail/cc-list'),
+  getWeeklyMailLogs: (templateId) => request(`/api/weekly-mail/logs${buildQuery({ template_id: templateId })}`),  getMailCcList: () => request('/api/bulk-mail/cc-list'),
   saveMailCcList: (list) =>
     request('/api/bulk-mail/cc-list', {
       method: 'PUT',
@@ -204,17 +197,17 @@ export const api = {
       body: JSON.stringify({ list }),
     }),
   getReportTemplates: () => request('/api/report-templates'),
-  createReportTemplate: (name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '') =>
+  createReportTemplate: (name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '', mailSubject = '', mailSignature = '') =>
     request('/api/report-templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle }),
+      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle, mailSubject, mailSignature }),
     }),
-  updateReportTemplate: (id, name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '') =>
+  updateReportTemplate: (id, name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '', mailSubject = '', mailSignature = '') =>
     request(`/api/report-templates/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle }),
+      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle, mailSubject, mailSignature }),
     }),
   deleteReportTemplate: (id) =>
     request(`/api/report-templates/${id}`, { method: 'DELETE' }),

@@ -15,7 +15,7 @@ function periodTypeOf(v) {
 router.get('/report-templates', async (req, res) => {
   try {
     const [rows] = await getPool().query(
-      'SELECT id, name, content, period_type, with_attachment, mail_title, mail_subtitle FROM report_templates ORDER BY id'
+      'SELECT id, name, content, period_type, with_attachment, mail_title, mail_subtitle, mail_subject, mail_signature FROM report_templates ORDER BY id'
     );
     res.json({ templates: rows });
   } catch (e) {
@@ -33,15 +33,17 @@ router.post('/report-templates', async (req, res) => {
     const withAttachment = req.body?.withAttachment ? 1 : 0;
     const mailTitle = String(req.body?.mailTitle ?? '').trim() || null;
     const mailSubtitle = String(req.body?.mailSubtitle ?? '').trim() || null;
+    const mailSubject = String(req.body?.mailSubject ?? '').trim() || null;
+    const mailSignature = String(req.body?.mailSignature ?? '') || null;
     const pool = getPool();
     const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM report_templates');
     if (n >= MAX_TEMPLATES) {
       return res.status(400).json({ error: `最多只能保存 ${MAX_TEMPLATES} 个模板` });
     }
     const [r] = await pool.query(
-      `INSERT INTO report_templates (name, content, period_type, with_attachment, mail_title, mail_subtitle)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, content, periodType, withAttachment, mailTitle, mailSubtitle]
+      `INSERT INTO report_templates (name, content, period_type, with_attachment, mail_title, mail_subtitle, mail_subject, mail_signature)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, content, periodType, withAttachment, mailTitle, mailSubtitle, mailSubject, mailSignature]
     );
     res.status(201).json({ id: r.insertId });
   } catch (e) {
@@ -59,10 +61,12 @@ router.put('/report-templates/:id', async (req, res) => {
     const withAttachment = req.body?.withAttachment ? 1 : 0;
     const mailTitle = String(req.body?.mailTitle ?? '').trim() || null;
     const mailSubtitle = String(req.body?.mailSubtitle ?? '').trim() || null;
+    const mailSubject = String(req.body?.mailSubject ?? '').trim() || null;
+    const mailSignature = String(req.body?.mailSignature ?? '') || null;
     const [r] = await getPool().query(
       `UPDATE report_templates SET name = ?, content = ?, period_type = ?, with_attachment = ?,
-         mail_title = ?, mail_subtitle = ? WHERE id = ?`,
-      [name, content, periodType, withAttachment, mailTitle, mailSubtitle, req.params.id]
+         mail_title = ?, mail_subtitle = ?, mail_subject = ?, mail_signature = ? WHERE id = ?`,
+      [name, content, periodType, withAttachment, mailTitle, mailSubtitle, mailSubject, mailSignature, req.params.id]
     );
     if (r.affectedRows === 0) return res.status(404).json({ error: '模板不存在' });
     res.json({ id: Number(req.params.id) });

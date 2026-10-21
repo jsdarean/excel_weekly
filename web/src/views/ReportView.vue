@@ -90,7 +90,7 @@
           <textarea v-model="mailSignature" rows="3" placeholder="留空则不附加签名"></textarea>
         </label>
         <p class="toolbar">
-          <button @click="saveMailConfig" :disabled="savingConfig">{{ savingConfig ? '保存中…' : '保存主题/签名' }}</button>
+          <button @click="saveMailConfig" :disabled="savingConfig">{{ savingConfig ? '保存中…' : '保存主题/签名（当前模板）' }}</button>
           <span v-if="configTip" class="ok-tip">{{ configTip }}</span>
         </p>
       </div>
@@ -104,7 +104,7 @@
           <input ref="vipFileInput" type="file" accept=".xlsx,.xls" hidden @change="onVipImport" />
         </div>
       </div>
-      <p class="hint-tip">收件人名单按模板独立维护（当前显示所选模板的名单）；发送方式决定收件人在邮件中的位置（主送/抄送/密送），发送时按「姓名&lt;邮箱&gt;」格式组装；导入格式与导出一致。</p>
+      <p class="hint-tip">主题、签名与收件人名单均按当前模板绑定维护；发送方式决定收件人在邮件中的位置（主送/抄送/密送），发送时按「姓名&lt;邮箱&gt;」格式组装；导入格式与导出一致。</p>
       <div v-if="vipImportResult" class="import-result">
         <p class="ok-tip">
           导入完成：新增 {{ vipImportResult.added }} 条，跳过重复 {{ vipImportResult.skipped }} 条，失败 {{ vipImportResult.errors.length }} 条
@@ -249,8 +249,8 @@ const mailOpen = ref(false);
 const richFrame = ref(null);
 // 用户在富文本里的直接编辑结果（null 表示未编辑，用生成值）
 const editedHtml = ref(null);
-const mailSubject = ref('');
-const mailSignature = ref('');
+const mailSubject = ref(''); // 邮件主题（按模板绑定，留空用默认）
+const mailSignature = ref(''); // 邮件签名（按模板绑定）
 const savingConfig = ref(false);
 const configTip = ref('');
 const reportDate = ref('');
@@ -298,6 +298,10 @@ function onSelect() {
   currentAttach.value = !!current()?.with_attachment;
   currentMailTitle.value = current()?.mail_title ?? '';
   currentMailSubtitle.value = current()?.mail_subtitle ?? '';
+  mailSubject.value = current()?.mail_subject ?? '';
+  mailSignature.value = current()?.mail_signature ?? '';
+  // 发送记录也随模板切换
+  loadWeeklyLogs();
   generated.value = '';
   // 切换模板 → 载入该模板独立的 VIP 收件人名单
   if (currentId.value) loadVip();
@@ -548,7 +552,7 @@ async function copyAsEmail() {
 
 async function loadWeeklyLogs() {
   try {
-    weeklyLogs.value = (await api.getWeeklyMailLogs()).logs;
+    weeklyLogs.value = (await api.getWeeklyMailLogs(currentId.value)).logs;
   } catch {
     // 记录加载失败不影响主流程
   }
@@ -599,22 +603,18 @@ async function sendMail() {
 
 // ===== 邮件发送设置 =====
 
-async function loadMailConfig() {
-  try {
-    const c = await api.getWeeklyMailConfig();
-    mailSubject.value = c.subject ?? '';
-    mailSignature.value = c.signature ?? '';
-  } catch {
-    // 配置加载失败不影响主流程
-  }
-}
-
+// 主题/签名随当前模板保存（数据库按模板绑定）
 async function saveMailConfig() {
   savingConfig.value = true;
   configTip.value = '';
   try {
-    await api.saveWeeklyMailConfig({ subject: mailSubject.value, signature: mailSignature.value });
-    configTip.value = '已保存';
+    await api.updateReportTemplate(
+      currentId.value, current().name, template.value, currentPeriod.value,
+      currentAttach.value, currentMailTitle.value, currentMailSubtitle.value,
+      mailSubject.value, mailSignature.value
+    );
+    await load(false);
+    configTip.value = '已保存到当前模板';
     setTimeout(() => { configTip.value = ''; }, 2000);
   } catch (e) {
     error.value = e.message;
@@ -717,7 +717,7 @@ onMounted(async () => {
     // 周报日期（外壳日期/默认主题用）：取最近一次周报导入日期
     const dates = await api.getReportDates();
     reportDate.value = dates.dates?.[0] ?? '';
-    await Promise.all([loadMailConfig(), loadVip(), loadWeeklyLogs()]);
+    await Promise.all([loadVip(), loadWeeklyLogs()]);
   } catch (e) {
     error.value = e.message;
   }

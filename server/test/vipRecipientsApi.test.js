@@ -132,15 +132,15 @@ describe('/api/weekly-mail', () => {
 
   it('配置：默认空，保存后可读回', async () => {
     const app = createApp();
-    const def = await request(app).get('/api/weekly-mail/config');
-    expect(def.body).toEqual({ subject: '', signature: '' });
-
-    const saved = await request(app)
-      .put('/api/weekly-mail/config')
-      .send({ subject: '省本部重点项目进展', signature: '谢谢！' });
-    expect(saved.status).toBe(200);
-    const back = await request(app).get('/api/weekly-mail/config');
-    expect(back.body).toEqual({ subject: '省本部重点项目进展', signature: '谢谢！' });
+    // 模板自带主题/签名字段（按模板绑定），随模板 CRUD 读写
+    const tpl = await seedTemplate('带签名模板');
+    const upd = await request(app)
+      .put(`/api/report-templates/${tpl}`)
+      .send({ name: '带签名模板', content: '', mailSubject: '省本部重点项目进展', mailSignature: '谢谢！' });
+    expect(upd.status).toBe(200);
+    const back = await request(app).get('/api/report-templates');
+    expect(back.body.templates[0].mail_subject).toBe('省本部重点项目进展');
+    expect(back.body.templates[0].mail_signature).toBe('谢谢！');
   });
 
   it('发送：主题/正文为空 400；缺 templateId 400；模板无收件人 400；无邮箱配置 400', async () => {
