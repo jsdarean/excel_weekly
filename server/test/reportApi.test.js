@@ -14,6 +14,7 @@ describe('renderTemplate', () => {
     delivered2w: 5,
     categories: {
       '收入相关': { count: 24, pct: 10.3, budgetYi: '7.24', highlights: '1、项目甲，进展一。\n2、项目乙，进展二。',
+        highlightsWithRate: '1、项目甲（请购完成率：90%，到货完成率：85%），进展一。',
         stageCounts: { '项目实施阶段': 10, '勘察设计阶段': 14 },
         buildingCount: 20, buildingPct: 10.1, buildingBudgetYi: '6.00',
         buildingStageCounts: { '项目实施阶段': 9, '勘察设计阶段': 11 } },
@@ -38,6 +39,11 @@ describe('renderTemplate', () => {
       data
     );
     expect(out).toBe('在建198个，近1周交付2个，近2周交付5个');
+  });
+
+  it('重点进展_请购到货率版本占位符', () => {
+    const out = renderTemplate('{{收入相关_重点进展_请购到货率版本}}', data);
+    expect(out).toBe('1、项目甲（请购完成率：90%，到货完成率：85%），进展一。');
   });
 
   it('分类在建变体占位符：项目数/占比/金额亿/阶段项目数（剔除终验归档）', () => {
@@ -272,6 +278,35 @@ describe('/api/report-templates 与 /api/report-preview', () => {
     // P001(72400万,实施) + P008(10000万,归档)：总额 8.24亿，在建 7.24亿
     // 全部在建（含拟取消 P003）：P001+P002+P003 = 3 → 收入相关在建占比 33.3
     expect(prev.body.text).toBe('收入相关2个/在建1个/在建占比33.3，收入相关金额8.24/在建金额7.24');
+  });
+
+  it('重点进展_请购到货率版本：项目名后附加最近一期周报的请购/到货完成率', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query(
+      "INSERT INTO projects (project_code, project_name, category) VALUES ('P009', '项目壬', '收入相关')"
+    );
+    await pool.query("INSERT INTO watched_projects (project_code) VALUES ('P009')");
+    await pool.query(
+      `INSERT INTO watch_progress (project_code, report_date, detail, source) VALUES
+        ('P009', '2026-08-14', '完成A。', 'weekly'),
+        ('P009', '2026-08-21', '完成B。', 'weekly')`
+    );
+    // 最近一期（0821）带完成率；另有一个无完成率的项目
+    await pool.query(
+      `INSERT INTO weekly_progress (project_code, report_date, progress, purchase_rate, arrival_rate) VALUES
+        ('P009', '2026-08-14', 'p', 0.5, 0.4),
+        ('P009', '2026-08-21', 'p', 0.85, 0.8)`
+    );
+    const c = await request(app)
+      .post('/api/report-templates')
+      .send({ name: 'R', content: '{{收入相关_重点进展_请购到货率版本}}' });
+    const prev = await request(app).get(`/api/report-preview?template_id=${c.body.id}`);
+    expect(prev.status).toBe(200);
+    // 模板默认周报 → 窗口仅最近 1 期（0821）
+    // P001 无 weekly_progress 完成率 → —；P009 取最近一期（0821）的完成率
+    expect(prev.body.text).toContain('1、项目甲（请购率：—，到货率：—），详情。');
+    expect(prev.body.text).toContain('2、项目壬（请购率：85.0%，到货率：80.0%），完成B。');
   });
 
   it('无模板时预览返回空文本；template_id 不存在返回 404', async () => {

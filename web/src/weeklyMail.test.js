@@ -65,6 +65,15 @@ describe('renderWeeklyBodyHtml（给公司领导的模板结构）', () => {
     expect(html).toContain('<b style="color:#111827;">视联网X节点资源池工程项目</b>，南京节点');
   });
 
+  it('编号条目：序号徽标 + 项目名（含完成率括号）加粗', () => {
+    const html = renderWeeklyBodyHtml(
+      '1、视联网X节点资源池工程项目（请购完成率：85%，到货完成率：80%），南京节点继续验收。'
+    );
+    expect(html).toContain(
+      '<b style="color:#111827;">视联网X节点资源池工程项目（请购完成率：85%，到货完成率：80%）</b>，南京节点'
+    );
+  });
+
   it('普通段落按段落渲染，HTML 特殊字符转义', () => {
     const html = renderWeeklyBodyHtml('前言<a>说明\n一、短标题');
     expect(html).toContain('前言&lt;a&gt;说明');

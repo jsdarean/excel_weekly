@@ -14,6 +14,7 @@ export function renderTemplate(template, data) {
     flat[`${cat}_占比`] = c.pct;
     flat[`${cat}_金额亿`] = c.budgetYi;
     flat[`${cat}_重点进展`] = c.highlights;
+    flat[`${cat}_重点进展_请购到货率版本`] = c.highlightsWithRate ?? '（无）';
     // 在建变体：剔除终验归档后的项目数/占比/金额
     flat[`${cat}_在建_项目数`] = c.buildingCount ?? 0;
     flat[`${cat}_在建_占比`] = c.buildingPct ?? 0;
@@ -112,7 +113,17 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
       }
       byProject.get(r.project_code).details.push(r.detail);
     }
-    for (const [, p] of byProject) {
+    // 各项目最近一期周报的请购/到货完成率
+    const [rateRows] = await pool.query(
+      `SELECT wp.project_code, wp.purchase_rate, wp.arrival_rate
+       FROM weekly_progress wp
+       JOIN (
+         SELECT project_code, MAX(report_date) AS md FROM weekly_progress GROUP BY project_code
+       ) latest ON latest.project_code = wp.project_code AND latest.md = wp.report_date`
+    );
+    const rateMap = new Map(rateRows.map((r) => [r.project_code, r]));
+    const fmtRate = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? '—' : `${(Number(v) * 100).toFixed(1)}%`);
+    for (const [code, p] of byProject) {
       const parts = [];
       for (const d of p.details) {
         const t = String(d ?? '').replace(/本周/g, '').replace(/[。.\s]+$/, '').trim();
@@ -120,7 +131,13 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
       }
       if (!parts.length) continue;
       if (!hlByCat.has(p.category)) hlByCat.set(p.category, []);
-      hlByCat.get(p.category).push({ project_name: p.project_name, detail: parts.join('；') + '。' });
+      hlByCat.get(p.category).push({
+        project_name: p.project_name,
+        detail: parts.join('；') + '。',
+        rate: rateMap.has(code)
+          ? `（请购率：${fmtRate(rateMap.get(code).purchase_rate)}，到货率：${fmtRate(rateMap.get(code).arrival_rate)}）`
+          : '',
+      });
     }
   }
 
@@ -149,6 +166,12 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
       highlights: hls.length
         ? hls
             .map((h, i) => `${i + 1}、${h.project_name}，${String(h.detail).replace(/本周/g, '').replace(/。+\s*$/, '')}。`)
+            .join('\n')
+        : '（无）',
+      // 重点进展（请购/到货率版本）：项目名后附加最近一期的请购、到货完成率
+      highlightsWithRate: hls.length
+        ? hls
+            .map((h, i) => `${i + 1}、${h.project_name}${h.rate}，${String(h.detail).replace(/本周/g, '').replace(/。+\s*$/, '')}。`)
             .join('\n')
         : '（无）',
     };

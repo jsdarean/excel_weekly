@@ -80,8 +80,11 @@ export function renderWeeklyBodyHtml(text) {
         inList = true;
       }
       const body = item[2];
-      const m = body.match(/^([^，,]+)[，,]/);
-      const bodyHtml = m ? `<b style="color:#111827;">${m[1]}</b>，${body.slice(m[1].length + 1)}` : body;
+      // 项目名加粗：取"项目名（…）"（含全角括号段，如完成率/硬件部分括号），到其后第一个逗号为止；
+      // 优先匹配带括号段的形态，避免括号内逗号截断加粗
+      const m = body.match(/^(.*?)(（[^）]*）)+[，,]/) || body.match(/^(.*?)[，,]/);
+      const name = m ? m[0].slice(0, -1) : null; // 去掉末尾逗号
+      const bodyHtml = name ? `<b style="color:#111827;">${name}</b>，${body.slice(name.length + 1)}` : body;
       out.push(
         `<div style="display:flex;gap:10px;align-items:flex-start;">` +
         `<span style="flex-shrink:0;min-width:22px;height:22px;line-height:22px;text-align:center;background:#e8f3fb;color:#0086d4;border-radius:11px;font-size:12px;font-weight:bold;padding:0 6px;">${item[1]}</span>` +
