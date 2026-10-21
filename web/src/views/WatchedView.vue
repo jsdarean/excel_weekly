@@ -29,6 +29,26 @@
       <p v-if="error" class="error">{{ error }}</p>
     </div>
 
+    <!-- 关注项目列表 -->
+    <div v-if="watched.length" class="card list-card">
+      <h3>关注项目列表</h3>
+      <table>
+        <thead>
+          <tr><th>分类</th><th>项目编码</th><th>项目名称</th><th>需求部门</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="w in watchedOrdered" :key="w.project_code">
+            <td>{{ w.category || '未分类' }}</td>
+            <td class="num">{{ w.project_code }}</td>
+            <td>
+              <router-link class="proj-name" :to="`/projects/${encodeURIComponent(w.project_code)}`">{{ w.project_name }}</router-link>
+            </td>
+            <td>{{ w.demand_dept || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- 分类卡片 -->
     <div
       v-for="card in cards"
@@ -218,6 +238,17 @@ async function removeProgress(id) {
   }
 }
 
+// 关注项目列表排序：分类（收入相关→基础能力→支撑后端→拟取消→其他），组内按项目编码
+const CATEGORY_SORT = ['收入相关', '基础能力', '支撑后端', '拟取消'];
+const watchedOrdered = computed(() =>
+  [...watched.value].sort((a, b) => {
+    const ra = CATEGORY_SORT.indexOf(a.category || '');
+    const rb = CATEGORY_SORT.indexOf(b.category || '');
+    return (ra === -1 ? 99 : ra) - (rb === -1 ? 99 : rb)
+      || String(a.project_code).localeCompare(String(b.project_code));
+  })
+);
+
 // 卡片：固定 3 分类 + 有关注项目的其他分类；只展示有关注项目的卡片
 const cards = computed(() => {
   if (!stats.value) return [];
@@ -255,6 +286,11 @@ onMounted(async () => {
 
 <style scoped>
 .search-card { margin-bottom: 24px; }
+.list-card { margin-bottom: 24px; }
+.list-card h3 { margin-bottom: 12px; }
+.list-card th, .list-card td { text-align: center; }
+.list-card td:nth-child(3) { text-align: left; }
+.list-card .proj-name { font-size: 14px; }
 .search-input { width: 100%; box-sizing: border-box; }
 .candidates {
   margin-top: 8px;

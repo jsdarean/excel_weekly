@@ -10,7 +10,7 @@ router.get('/watched', async (req, res) => {
   try {
     const pool = getPool();
     const [watched] = await pool.query(
-      `SELECT w.project_code, p.project_name, p.category
+      `SELECT w.project_code, p.project_name, p.category, p.demand_dept
        FROM watched_projects w
        LEFT JOIN projects p ON p.project_code = w.project_code
        ORDER BY w.id`
