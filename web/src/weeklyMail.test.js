@@ -8,14 +8,19 @@ describe('defaultSubject', () => {
 });
 
 describe('buildEmailShell', () => {
-  it('含蓝色标题条、标题、日期与正文内容', () => {
-    const html = buildEmailShell('<p>正文</p>', { date: '2026-10-17' });
+  it('默认标题；传副标题时渲染副标题行', () => {
+    const html = buildEmailShell('<p>正文</p>', { subtitle: '2026-10-17' });
     expect(html).toContain(WEEKLY_MAIL_TITLE);
     expect(html).toContain('2026-10-17');
     expect(html).toContain('<p>正文</p>');
     expect(html).toContain('linear-gradient(90deg,#0086d4');
   });
-  it('无日期时不渲染日期行', () => {
+  it('自定义标题/副标题，HTML 特殊字符转义', () => {
+    const html = buildEmailShell('<p>x</p>', { title: '领导好<a>', subtitle: '第（1）期' });
+    expect(html).toContain('领导好&lt;a&gt;');
+    expect(html).toContain('第（1）期');
+  });
+  it('无副标题时不渲染副标题行', () => {
     expect(buildEmailShell('<p>x</p>')).not.toContain('font-size:12px;margin-top:4px');
   });
 });

@@ -147,9 +147,38 @@ export async function initDatabase() {
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(64) NOT NULL DEFAULT '默认模板',
     content MEDIUMTEXT,
+    period_type VARCHAR(8) NOT NULL DEFAULT '周报',
+    with_attachment TINYINT(1) NOT NULL DEFAULT 0,
+    mail_title VARCHAR(128) NULL,
+    mail_subtitle VARCHAR(255) NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：周期类型（周报/双周报/月报，决定重点进展汇总的时间窗口）
+  const [periodCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = 'period_type'`
+  );
+  if (periodCol.length === 0) {
+    await p.query("ALTER TABLE report_templates ADD COLUMN period_type VARCHAR(8) NOT NULL DEFAULT '周报'");
+  }
+  // 兼容旧表：发送时是否附带 Excel 附件（0/1）
+  const [attachCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = 'with_attachment'`
+  );
+  if (attachCol.length === 0) {
+    await p.query('ALTER TABLE report_templates ADD COLUMN with_attachment TINYINT(1) NOT NULL DEFAULT 0');
+  }
+  // 兼容旧表：富文本邮件标题/副标题（留空用默认：省本部重点工程项目进展 / 周报日期）
+  const [mailTitleCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = 'mail_title'`
+  );
+  if (mailTitleCol.length === 0) {
+    await p.query('ALTER TABLE report_templates ADD COLUMN mail_title VARCHAR(128) NULL');
+    await p.query('ALTER TABLE report_templates ADD COLUMN mail_subtitle VARCHAR(255) NULL');
+  }
   // 项目关联人（需求侧联系人）：一个项目可有多名关联人
   // send_to/send_cc/send_bcc 分别表示邮件主送/抄送/密送
   await p.query(`CREATE TABLE IF NOT EXISTS project_contacts (
@@ -255,17 +284,40 @@ export async function initDatabase() {
     sort_order INT NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
-  // 周报邮件 VIP 收件人（send_type：主送/抄送/密送）
+  // 周报邮件 VIP 收件人（send_type：主送/抄送/密送；sort_order 控制同组内顺序；template_id 绑定模板，各模板独立名单）
   await p.query(`CREATE TABLE IF NOT EXISTS vip_recipients (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    template_id INT NOT NULL,
     dept VARCHAR(128),
     title VARCHAR(16),
     name VARCHAR(64) NOT NULL,
     email VARCHAR(128) NOT NULL,
     send_type VARCHAR(8) NOT NULL DEFAULT '主送',
+    sort_order INT NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：模板绑定列与排序列
+  const [vipTplCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'vip_recipients' AND column_name = 'template_id'`
+  );
+  if (vipTplCol.length === 0) {
+    await p.query('ALTER TABLE vip_recipients ADD COLUMN template_id INT NULL');
+    // 存量收件人归到第一个模板，避免游离数据
+    await p.query(
+      'UPDATE vip_recipients SET template_id = (SELECT MIN(id) FROM report_templates) WHERE template_id IS NULL'
+    );
+    await p.query('ALTER TABLE vip_recipients MODIFY COLUMN template_id INT NOT NULL');
+  }
+  // 兼容旧表：排序列
+  const [vipSortCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'vip_recipients' AND column_name = 'sort_order'`
+  );
+  if (vipSortCol.length === 0) {
+    await p.query('ALTER TABLE vip_recipients ADD COLUMN sort_order INT NOT NULL DEFAULT 0');
+  }
   // 周报邮件配置（单行，id 固定为 1；主题留空时前端按默认规则生成）
   await p.query(`CREATE TABLE IF NOT EXISTS weekly_mail_config (
     id INT PRIMARY KEY,
@@ -280,8 +332,17 @@ export async function initDatabase() {
     to_addr TEXT,
     cc_addr TEXT,
     bcc_addr TEXT,
+    attachment VARCHAR(255),
     status VARCHAR(16) NOT NULL,
     error TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：附件名记录列
+  const [wkAttachCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'weekly_mail_logs' AND column_name = 'attachment'`
+  );
+  if (wkAttachCol.length === 0) {
+    await p.query('ALTER TABLE weekly_mail_logs ADD COLUMN attachment VARCHAR(255) NULL');
+  }
 }

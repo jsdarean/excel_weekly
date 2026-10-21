@@ -10,6 +10,17 @@ export function nextFriday(reportDate) {
   return `${y}-${m}-${day}`;
 }
 
+// 系统时间（附件下载命名用）：YYYY-MM-DD / YYYYMMDD
+export function systemDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+export function systemDateCompact(d = new Date()) {
+  return systemDate(d).replace(/-/g, '');
+}
+
 function toNum(v) {
   if (v === null || v === undefined || v === '') return '';
   const n = Number(v);
@@ -55,12 +66,12 @@ export function buildExportData(rows, reportDate) {
   return [header, ...body];
 }
 
-// 附件下载：去掉空白的下周进展列（L 列）
+// 附件下载：去掉空白的下周进展列（L 列）；K 列用"最近一周进展(系统时间)"
 export function buildAttachmentData(rows, reportDate) {
   const header = [
     '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '分类',
     '工程责任人', '立项金额（万元）', '项目阶段', '建设内容',
-    `周进展(${reportDate})`,
+    `最近一周进展(${systemDate()})`,
     '主设备请购完成率', '是否交底', '主设备到货完成率', '是否上线交维',
     '是否竣工验收', '需求部门', '需求室', '需求责任人',
   ];
@@ -198,7 +209,8 @@ export async function exportReports(rows, reportDate) {
 export function buildAttachmentWorkbook(rows, reportDate) {
   const aoa = buildAttachmentData(rows, reportDate);
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(`周报${reportDate}`);
+  // sheet 名：项目进展清单 + 系统时间
+  const ws = wb.addWorksheet(`项目进展清单${systemDate()}`);
 
   ws.columns = ATTACHMENT_COL_WIDTHS.map((w) => ({ width: w }));
 
@@ -229,9 +241,24 @@ export async function exportAttachment(rows, reportDate) {
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const dateStr = String(reportDate).replace(/-/g, '');
+  // 文件名：工程建设部核心网室项目进展清单 + 系统时间
   a.href = url;
-  a.download = `核心网室项目每周进展${dateStr}.xlsx`;
+  a.download = `工程建设部核心网室项目进展清单${systemDateCompact()}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// 生成邮件附件（与"附件下载"完全相同的 Excel）：返回文件名 + base64 内容
+export async function buildAttachmentBase64(rows, reportDate) {
+  const wb = buildAttachmentWorkbook(rows, reportDate);
+  const buf = await wb.xlsx.writeBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return {
+    filename: `工程建设部核心网室项目进展清单${systemDateCompact()}.xlsx`,
+    contentBase64: btoa(bin),
+  };
 }

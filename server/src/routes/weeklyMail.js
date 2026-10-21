@@ -39,32 +39,39 @@ router.put('/config', async (req, res) => {
   }
 });
 
-async function writeLog(pool, { subject, to, cc, bcc, status, error }) {
+async function writeLog(pool, { subject, to, cc, bcc, attachment, status, error }) {
   await pool.query(
-    `INSERT INTO weekly_mail_logs (subject, to_addr, cc_addr, bcc_addr, status, error)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [subject, to.join('、'), cc.join('、'), bcc.join('、'), status, error || null]
+    `INSERT INTO weekly_mail_logs (subject, to_addr, cc_addr, bcc_addr, attachment, status, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [subject, to.join('、'), cc.join('、'), bcc.join('、'), attachment || null, status, error || null]
   );
 }
 
-// 一键发送：收件人从 vip_recipients 按发送方式组装，正文 HTML 由前端生成传入
+// 一键发送：收件人取指定模板绑定的 VIP 名单（各模板独立），正文 HTML 由前端生成传入
 router.post('/send', async (req, res) => {
   try {
     const subject = String(req.body?.subject ?? '').trim();
     const html = String(req.body?.html ?? '').trim();
     const text = String(req.body?.text ?? '').trim();
+    const templateId = Number(req.body?.templateId ?? 0);
     if (!subject) return res.status(400).json({ error: '邮件主题不能为空' });
     if (!html) return res.status(400).json({ error: '邮件正文不能为空，请先生成预览' });
+    if (!Number.isInteger(templateId) || templateId <= 0) {
+      return res.status(400).json({ error: '缺少模板参数 templateId' });
+    }
 
     const pool = getPool();
+    const [tpl] = await pool.query('SELECT name FROM report_templates WHERE id = ?', [templateId]);
+    if (!tpl.length) return res.status(404).json({ error: '模板不存在' });
     const [recipients] = await pool.query(
-      'SELECT name, email, send_type FROM vip_recipients'
+      'SELECT name, email, send_type FROM vip_recipients WHERE template_id = ?',
+      [templateId]
     );
     const to = recipients.filter((r) => r.send_type === '主送').map(formatRecipient);
     const cc = recipients.filter((r) => r.send_type === '抄送').map(formatRecipient);
     const bcc = recipients.filter((r) => r.send_type === '密送').map(formatRecipient);
     if (to.length === 0) {
-      return res.status(400).json({ error: 'VIP 收件人中没有主送人员，请先在「VIP 收件人」中设置' });
+      return res.status(400).json({ error: `模板「${tpl[0].name}」没有主送人员，请先在「VIP 收件人」中设置` });
     }
 
     const config = await getEmailConfig();
@@ -72,15 +79,27 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ error: '邮箱配置不完整，请先到「邮箱配置」页完善' });
     }
 
+    // 可选附件：Excel（filename + base64 内容），模板开启"附带附件"时由前端生成传入
+    const att = req.body?.attachment;
+    let attachment = null;
+    if (att) {
+      const filename = String(att.filename ?? '').trim();
+      const contentBase64 = String(att.contentBase64 ?? '').trim();
+      if (!filename || !contentBase64) {
+        return res.status(400).json({ error: '附件参数不完整（filename / contentBase64）' });
+      }
+      attachment = { filename, content: Buffer.from(contentBase64, 'base64') };
+    }
+
     try {
-      const { sentFolder } = await sendAndArchive(config, { to, cc, bcc, subject, text, html });
-      await writeLog(pool, { subject, to, cc, bcc, status: '成功' });
+      const { sentFolder } = await sendAndArchive(config, { to, cc, bcc, subject, text, html, attachments: attachment ? [attachment] : [] });
+      await writeLog(pool, { subject, to, cc, bcc, attachment: attachment?.filename, status: '成功' });
       return res.json({ ok: true, message: sentFolder ? `发送成功，已存档到「${sentFolder}」` : '发送成功' });
     } catch (e) {
       // 仅 IMAP 存档失败时 SMTP 已成功发送：状态记成功，错误信息留存备查
       const archiveOnly = /IMAP|追加|存档/.test(e.message);
       await writeLog(pool, {
-        subject, to, cc, bcc,
+        subject, to, cc, bcc, attachment: attachment?.filename,
         status: archiveOnly ? '成功' : '失败',
         error: archiveOnly ? `IMAP 存档失败：${e.message}` : e.message,
       });
@@ -98,7 +117,7 @@ router.post('/send', async (req, res) => {
 router.get('/logs', async (req, res) => {
   try {
     const [rows] = await getPool().query(
-      `SELECT id, subject, to_addr, cc_addr, bcc_addr, status, error, created_at
+      `SELECT id, subject, to_addr, cc_addr, bcc_addr, attachment, status, error, created_at
        FROM weekly_mail_logs ORDER BY id DESC LIMIT 50`
     );
     res.json({ logs: rows });

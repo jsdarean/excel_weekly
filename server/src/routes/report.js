@@ -4,12 +4,18 @@ import { buildReportData, renderTemplate } from '../reportService.js';
 
 const router = Router();
 const MAX_TEMPLATES = 5;
+const PERIOD_TYPES = ['周报', '双周报', '月报'];
+
+function periodTypeOf(v) {
+  const t = String(v ?? '').trim();
+  return PERIOD_TYPES.includes(t) ? t : '周报';
+}
 
 // 模板列表
 router.get('/report-templates', async (req, res) => {
   try {
     const [rows] = await getPool().query(
-      'SELECT id, name, content FROM report_templates ORDER BY id'
+      'SELECT id, name, content, period_type, with_attachment, mail_title, mail_subtitle FROM report_templates ORDER BY id'
     );
     res.json({ templates: rows });
   } catch (e) {
@@ -23,14 +29,19 @@ router.post('/report-templates', async (req, res) => {
     const name = String(req.body?.name ?? '').trim();
     if (!name) return res.status(400).json({ error: '模板名称不能为空' });
     const content = String(req.body?.content ?? '');
+    const periodType = periodTypeOf(req.body?.periodType);
+    const withAttachment = req.body?.withAttachment ? 1 : 0;
+    const mailTitle = String(req.body?.mailTitle ?? '').trim() || null;
+    const mailSubtitle = String(req.body?.mailSubtitle ?? '').trim() || null;
     const pool = getPool();
     const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM report_templates');
     if (n >= MAX_TEMPLATES) {
       return res.status(400).json({ error: `最多只能保存 ${MAX_TEMPLATES} 个模板` });
     }
     const [r] = await pool.query(
-      'INSERT INTO report_templates (name, content) VALUES (?, ?)',
-      [name, content]
+      `INSERT INTO report_templates (name, content, period_type, with_attachment, mail_title, mail_subtitle)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, content, periodType, withAttachment, mailTitle, mailSubtitle]
     );
     res.status(201).json({ id: r.insertId });
   } catch (e) {
@@ -38,15 +49,20 @@ router.post('/report-templates', async (req, res) => {
   }
 });
 
-// 改名 / 改内容
+// 改名 / 改内容 / 改周期类型
 router.put('/report-templates/:id', async (req, res) => {
   try {
     const name = String(req.body?.name ?? '').trim();
     if (!name) return res.status(400).json({ error: '模板名称不能为空' });
     const content = String(req.body?.content ?? '');
+    const periodType = periodTypeOf(req.body?.periodType);
+    const withAttachment = req.body?.withAttachment ? 1 : 0;
+    const mailTitle = String(req.body?.mailTitle ?? '').trim() || null;
+    const mailSubtitle = String(req.body?.mailSubtitle ?? '').trim() || null;
     const [r] = await getPool().query(
-      'UPDATE report_templates SET name = ?, content = ? WHERE id = ?',
-      [name, content, req.params.id]
+      `UPDATE report_templates SET name = ?, content = ?, period_type = ?, with_attachment = ?,
+         mail_title = ?, mail_subtitle = ? WHERE id = ?`,
+      [name, content, periodType, withAttachment, mailTitle, mailSubtitle, req.params.id]
     );
     if (r.affectedRows === 0) return res.status(404).json({ error: '模板不存在' });
     res.json({ id: Number(req.params.id) });
@@ -73,16 +89,16 @@ router.get('/report-preview', async (req, res) => {
     let rows;
     if (req.query.template_id) {
       [rows] = await pool.query(
-        'SELECT content FROM report_templates WHERE id = ?',
+        'SELECT content, period_type, with_attachment FROM report_templates WHERE id = ?',
         [req.query.template_id]
       );
       if (!rows.length) return res.status(404).json({ error: '模板不存在' });
     } else {
-      [rows] = await pool.query('SELECT content FROM report_templates ORDER BY id LIMIT 1');
+      [rows] = await pool.query('SELECT content, period_type, with_attachment FROM report_templates ORDER BY id LIMIT 1');
     }
     const template = rows.length ? rows[0].content ?? '' : '';
     if (!template) return res.json({ text: '' });
-    const data = await buildReportData(pool);
+    const data = await buildReportData(pool, { periodType: periodTypeOf(rows[0].period_type) });
     res.json({ text: renderTemplate(template, data) });
   } catch (e) {
     res.status(500).json({ error: `生成失败：${e.message}` });

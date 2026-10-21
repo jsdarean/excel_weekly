@@ -157,24 +157,31 @@ export const api = {
       body: JSON.stringify({ projectCode: code }),
     }),
   getMailLogs: () => request('/api/bulk-mail/logs'),
-  listVipRecipients: () => request('/api/vip-recipients'),
-  createVipRecipient: (r) =>
-    request('/api/vip-recipients', {
+  listVipRecipients: (templateId) => request(`/api/vip-recipients${buildQuery({ template_id: templateId })}`),
+  createVipRecipient: (templateId, r) =>
+    request(`/api/vip-recipients${buildQuery({ template_id: templateId })}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(r),
     }),
-  updateVipRecipient: (id, r) =>
-    request(`/api/vip-recipients/${id}`, {
+  updateVipRecipient: (templateId, id, r) =>
+    request(`/api/vip-recipients/${id}${buildQuery({ template_id: templateId })}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(r),
     }),
-  deleteVipRecipient: (id) => request(`/api/vip-recipients/${id}`, { method: 'DELETE' }),
-  importVipRecipients(file) {
+  deleteVipRecipient: (templateId, id) =>
+    request(`/api/vip-recipients/${id}${buildQuery({ template_id: templateId })}`, { method: 'DELETE' }),
+  saveVipOrder: (templateId, ids) =>
+    request(`/api/vip-recipients/order${buildQuery({ template_id: templateId })}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }),
+  importVipRecipients(templateId, file) {
     const fd = new FormData();
     fd.append('file', file);
-    return request('/api/vip-recipients/import', { method: 'POST', body: fd });
+    return request(`/api/vip-recipients/import${buildQuery({ template_id: templateId })}`, { method: 'POST', body: fd });
   },
   getWeeklyMailConfig: () => request('/api/weekly-mail/config'),
   saveWeeklyMailConfig: (c) =>
@@ -197,17 +204,17 @@ export const api = {
       body: JSON.stringify({ list }),
     }),
   getReportTemplates: () => request('/api/report-templates'),
-  createReportTemplate: (name, content) =>
+  createReportTemplate: (name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '') =>
     request('/api/report-templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content }),
+      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle }),
     }),
-  updateReportTemplate: (id, name, content) =>
+  updateReportTemplate: (id, name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '') =>
     request(`/api/report-templates/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content }),
+      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle }),
     }),
   deleteReportTemplate: (id) =>
     request(`/api/report-templates/${id}`, { method: 'DELETE' }),

@@ -1,10 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { buildExportData, buildWorkbook, buildAttachmentData, buildAttachmentWorkbook, nextFriday } from './exportExcel.js';
+import { buildExportData, buildWorkbook, buildAttachmentData, buildAttachmentWorkbook, nextFriday, systemDate, systemDateCompact } from './exportExcel.js';
 
 describe('nextFriday', () => {
   it('返回下一周周五（当前周五 +7 天）', () => {
     expect(nextFriday('2026-08-21')).toBe('2026-08-28');
     expect(nextFriday('2026-12-25')).toBe('2027-01-01');
+  });
+});
+
+describe('systemDate', () => {
+  it('格式为 YYYY-MM-DD 与 YYYYMMDD', () => {
+    const d = new Date(2026, 9, 15); // 2026-10-15
+    expect(systemDate(d)).toBe('2026-10-15');
+    expect(systemDateCompact(d)).toBe('20261015');
   });
 });
 
@@ -137,10 +145,16 @@ describe('buildExportData', () => {
       { project_code: 'P4', progress: null },
     ];
     const data = buildAttachmentData(special, '2026-08-21');
-    // 周进展为数据列索引 10
+    // 进展列为数据列索引 10，表头为"最近一周进展(系统时间)"
+    expect(data[0][10]).toBe(`最近一周进展(${systemDate()})`);
     expect(data[1][10]).toBe('完成设备到货');
     expect(data[2][10]).toBe('完成A，完成B');
     expect(data[3][10]).toBe('设备已到货');
     expect(data[4][10]).toBe('');
+  });
+
+  it('附件下载工作簿：sheet 名为 项目进展清单+系统时间', () => {
+    const wb = buildAttachmentWorkbook(rows, '2026-08-21');
+    expect(wb.worksheets[0].name).toBe(`项目进展清单${systemDate()}`);
   });
 });
