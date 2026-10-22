@@ -40,7 +40,7 @@ describe('/api/vip-recipients', () => {
     const list = await request(app).get(`/api/vip-recipients?template_id=${tpl1}`);
     expect(list.body.recipients).toHaveLength(1);
     expect(list.body.recipients[0]).toMatchObject({
-      dept: '网络部', title: '副总', name: '张三', email: 'zs@x.com', send_type: '抄送',
+      dept: '网络部', title: '副总', name: '张三', email: 'zs@x.com', send_type: '抄送', enabled: 1,
     });
 
     const id = list.body.recipients[0].id;
@@ -97,9 +97,9 @@ describe('/api/vip-recipients', () => {
       [tpl, '张三', 'zs@x.com', '主送']
     );
     const buf = xlsxBuffer([
-      ['部门', '职务', '姓名', '邮箱', '发送方式'],
-      ['网络部', '副总', '张三', 'zs@x.com', '抄送'],   // 重复 → 跳过
-      ['网络部', '', '李四', 'ls@x.com', '密送'],       // 新增
+      ['部门', '职务', '姓名', '邮箱', '发送方式', '是否发送'],
+      ['网络部', '副总', '张三', 'zs@x.com', '抄送', '是'],   // 重复 → 跳过
+      ['网络部', '', '李四', 'ls@x.com', '密送', '否'],       // 新增（不发送）
       ['', '', '', '', ''],                              // 空白行忽略
       ['', '', '王五', 'bad-mail', '主送'],              // 邮箱非法 → 报错
     ]);
@@ -122,8 +122,14 @@ describe('/api/vip-recipients', () => {
     expect(exp.status).toBe(200);
     const wb = xlsx.read(exp.body, { type: 'buffer' });
     const aoa = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-    expect(aoa[0]).toEqual(['部门', '职务', '姓名', '邮箱', '发送方式']);
+    expect(aoa[0]).toEqual(['部门', '职务', '姓名', '邮箱', '发送方式', '是否发送']);
     expect(aoa).toHaveLength(3);
+    // 导入时 是否发送=否 → enabled=0
+    const [li] = await getPool().query(
+      'SELECT enabled FROM vip_recipients WHERE template_id = ? AND name = ?',
+      [tpl, '李四']
+    );
+    expect(li[0].enabled).toBe(0);
   });
 });
 
@@ -141,6 +147,33 @@ describe('/api/weekly-mail', () => {
     const back = await request(app).get('/api/report-templates');
     expect(back.body.templates[0].mail_subject).toBe('省本部重点项目进展');
     expect(back.body.templates[0].mail_signature).toBe('谢谢！');
+  });
+
+  it('是否发送：取消勾选后列表 enabled=0，发送时不再取该收件人', async () => {
+    const app = createApp();
+    const tpl = await seedTemplate();
+    const c = await request(app)
+      .post(`/api/vip-recipients?template_id=${tpl}`)
+      .send({ name: '张三', email: 'zs@x.com', sendType: '主送' });
+    // 取消勾选（整行更新 enabled=0）
+    const off = await request(app)
+      .put(`/api/vip-recipients/${c.body.id}?template_id=${tpl}`)
+      .send({ name: '张三', email: 'zs@x.com', sendType: '主送', enabled: false });
+    expect(off.status).toBe(200);
+    const list = await request(app).get(`/api/vip-recipients?template_id=${tpl}`);
+    expect(list.body.recipients[0].enabled).toBe(0);
+    // 该模板唯一主送被停用 → 发送校验"没有主送人员"
+    const res = await request(app)
+      .post('/api/weekly-mail/send')
+      .send({ subject: 's', html: '<p>x</p>', text: 'x', templateId: tpl });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('主送');
+    // 重新勾选恢复
+    await request(app)
+      .put(`/api/vip-recipients/${c.body.id}?template_id=${tpl}`)
+      .send({ name: '张三', email: 'zs@x.com', sendType: '主送', enabled: true });
+    const list2 = await request(app).get(`/api/vip-recipients?template_id=${tpl}`);
+    expect(list2.body.recipients[0].enabled).toBe(1);
   });
 
   it('发送：主题/正文为空 400；缺 templateId 400；模板无收件人 400；无邮箱配置 400', async () => {

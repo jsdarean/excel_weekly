@@ -34,7 +34,7 @@ router.post('/send', async (req, res) => {
     const [tpl] = await pool.query('SELECT name FROM report_templates WHERE id = ?', [templateId]);
     if (!tpl.length) return res.status(404).json({ error: '模板不存在' });
     const [recipients] = await pool.query(
-      'SELECT name, email, send_type FROM vip_recipients WHERE template_id = ?',
+      'SELECT name, email, send_type FROM vip_recipients WHERE template_id = ? AND enabled = 1',
       [templateId]
     );
     const to = recipients.filter((r) => r.send_type === '主送').map(formatRecipient);

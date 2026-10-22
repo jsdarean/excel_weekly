@@ -41,15 +41,68 @@ function fromHeader(config) {
   return config.fromName ? `"${config.fromName}" <${addr}>` : addr;
 }
 
+// SMTP 连接池：同一邮箱配置复用一个长连接池，避免每次发送都重新握手（首次连接慢、后续快）
+// 按配置内容生成缓存键，邮箱配置页修改参数后自动重建池
+let transporterPool = { key: null, transporter: null };
+
+export function transporterCacheKey(config) {
+  return JSON.stringify([
+    config.smtpHost, config.smtpPort, config.smtpSecure, config.smtpUser, config.smtpPass,
+  ]);
+}
+
+export function getPooledTransporter(config) {
+  const key = transporterCacheKey(config);
+  if (transporterPool.key === key && transporterPool.transporter) {
+    return transporterPool.transporter;
+  }
+  // 配置变化：关闭旧池（已排队的消息由 nodemailer 内部处理）
+  if (transporterPool.transporter) transporterPool.transporter.close();
+  transporterPool = {
+    key,
+    transporter: nodemailer.createTransport({
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 200,
+      host: config.smtpHost,
+      port: config.smtpPort,
+      secure: config.smtpSecure,
+      auth: { user: config.smtpUser, pass: config.smtpPass },
+      connectionTimeout: 30000,
+      greetingTimeout: 30000,
+      socketTimeout: 120000,
+    }),
+  };
+  return transporterPool.transporter;
+}
+
+// 测试/进程退出前可调用：关闭池
+export function closeTransporterPool() {
+  if (transporterPool.transporter) transporterPool.transporter.close();
+  transporterPool = { key: null, transporter: null };
+}
+
+// 服务启动时预热：读取邮箱配置并提前建立 SMTP 连接（含认证），
+// 避免用户第一次点发送时才承受握手耗时；失败仅记录日志，不影响启动
+export async function warmupTransporter() {
+  try {
+    const config = await getEmailConfig();
+    if (!configComplete(config)) {
+      console.log('SMTP 预热跳过：邮箱配置不完整');
+      return;
+    }
+    const transporter = getPooledTransporter(config);
+    await transporter.verify();
+    console.log('SMTP 连接池已预热（连接与认证正常）');
+  } catch (e) {
+    console.log(`SMTP 预热失败（不影响服务，首次发送时会重试）：${e.message}`);
+  }
+}
+
 // 发送邮件并存档到「已发送」；存档失败不影响发送结果，通过返回值体现
 // to/cc/bcc 均可传字符串或字符串数组；attachments 为 nodemailer 附件（如 CID 内嵌图片）
 export async function sendAndArchive(config, { to, cc, bcc, subject, text, html, attachments }) {
-  const transporter = nodemailer.createTransport({
-    host: config.smtpHost,
-    port: config.smtpPort,
-    secure: config.smtpSecure,
-    auth: { user: config.smtpUser, pass: config.smtpPass },
-  });
+  const transporter = getPooledTransporter(config);
   const message = {
     from: fromHeader(config),
     to,

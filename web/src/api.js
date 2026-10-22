@@ -197,17 +197,17 @@ export const api = {
       body: JSON.stringify({ list }),
     }),
   getReportTemplates: () => request('/api/report-templates'),
-  createReportTemplate: (name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '', mailSubject = '', mailSignature = '') =>
+  createReportTemplate: (t) =>
     request('/api/report-templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle, mailSubject, mailSignature }),
+      body: JSON.stringify(t),
     }),
-  updateReportTemplate: (id, name, content, periodType = '周报', withAttachment = false, mailTitle = '', mailSubtitle = '', mailSubject = '', mailSignature = '') =>
+  updateReportTemplate: (id, t) =>
     request(`/api/report-templates/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content, periodType, withAttachment, mailTitle, mailSubtitle, mailSubject, mailSignature }),
+      body: JSON.stringify(t),
     }),
   deleteReportTemplate: (id) =>
     request(`/api/report-templates/${id}`, { method: 'DELETE' }),

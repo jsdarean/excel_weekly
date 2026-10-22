@@ -49,7 +49,7 @@ router.get('/', async (req, res) => {
     const templateId = templateIdOf(req, res);
     if (!templateId) return;
     const [rows] = await getPool().query(
-      `SELECT id, dept, title, name, email, send_type FROM vip_recipients
+      `SELECT id, dept, title, name, email, send_type, enabled FROM vip_recipients
        WHERE template_id = ?
        ORDER BY FIELD(send_type, '主送', '抄送', '密送'), sort_order, id`,
       [templateId]
@@ -90,9 +90,10 @@ router.post('/', async (req, res) => {
     const err = validate(req.body, templateId);
     if (err) return res.status(400).json({ error: err });
     const { dept = null, title = null, name, email, sendType = '主送' } = req.body;
+    const enabled = req.body?.enabled === false || req.body?.enabled === 0 ? 0 : 1;
     const [r] = await getPool().query(
-      'INSERT INTO vip_recipients (template_id, dept, title, name, email, send_type) VALUES (?, ?, ?, ?, ?, ?)',
-      [templateId, trimOrNull(dept), trimOrNull(title), String(name).trim(), String(email).trim(), String(sendType).trim()]
+      'INSERT INTO vip_recipients (template_id, dept, title, name, email, send_type, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [templateId, trimOrNull(dept), trimOrNull(title), String(name).trim(), String(email).trim(), String(sendType).trim(), enabled]
     );
     res.status(201).json({ id: r.insertId });
   } catch (e) {
@@ -112,9 +113,10 @@ router.put('/:id', async (req, res) => {
     );
     if (existing.length === 0) return res.status(404).json({ error: '收件人不存在' });
     const { dept = null, title = null, name, email, sendType = '主送' } = req.body;
+    const enabled = req.body?.enabled === false || req.body?.enabled === 0 ? 0 : 1;
     await getPool().query(
-      'UPDATE vip_recipients SET dept = ?, title = ?, name = ?, email = ?, send_type = ? WHERE id = ?',
-      [trimOrNull(dept), trimOrNull(title), String(name).trim(), String(email).trim(), String(sendType).trim(), req.params.id]
+      'UPDATE vip_recipients SET dept = ?, title = ?, name = ?, email = ?, send_type = ?, enabled = ? WHERE id = ?',
+      [trimOrNull(dept), trimOrNull(title), String(name).trim(), String(email).trim(), String(sendType).trim(), enabled, req.params.id]
     );
     res.json({ id: Number(req.params.id) });
   } catch (e) {
@@ -143,13 +145,13 @@ router.get('/export', async (req, res) => {
     const templateId = templateIdOf(req, res);
     if (!templateId) return;
     const [rows] = await getPool().query(
-      `SELECT dept, title, name, email, send_type FROM vip_recipients
+      `SELECT dept, title, name, email, send_type, enabled FROM vip_recipients
        WHERE template_id = ? ORDER BY FIELD(send_type, '主送', '抄送', '密送'), sort_order, id`,
       [templateId]
     );
     const aoa = [
-      ['部门', '职务', '姓名', '邮箱', '发送方式'],
-      ...rows.map((r) => [r.dept ?? '', r.title ?? '', r.name, r.email, r.send_type]),
+      ['部门', '职务', '姓名', '邮箱', '发送方式', '是否发送'],
+      ...rows.map((r) => [r.dept ?? '', r.title ?? '', r.name, r.email, r.send_type, r.enabled ? '是' : '否']),
     ];
     const wb = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(aoa), 'VIP收件人');
@@ -163,7 +165,7 @@ router.get('/export', async (req, res) => {
 });
 
 // Excel 导入：表头与导出一致；同一模板内姓名+邮箱重复的行跳过
-const IMPORT_HEADERS = ['部门', '职务', '姓名', '邮箱', '发送方式'];
+const IMPORT_HEADERS = ['部门', '职务', '姓名', '邮箱', '发送方式', '是否发送'];
 
 router.post('/import', upload.single('file'), async (req, res) => {
   try {
@@ -195,6 +197,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
       const body = {
         dept: get('部门'), title: get('职务'), name: get('姓名'),
         email: get('邮箱'), sendType: get('发送方式') || '主送',
+        enabled: get('是否发送') !== '否',
       };
       if (!body.name && !body.email) continue;
       const err = validate(body, templateId);
@@ -217,8 +220,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
         continue;
       }
       await pool.query(
-        'INSERT INTO vip_recipients (template_id, dept, title, name, email, send_type) VALUES (?, ?, ?, ?, ?, ?)',
-        [templateId, body.dept || null, body.title || null, body.name, body.email, body.sendType]
+        'INSERT INTO vip_recipients (template_id, dept, title, name, email, send_type, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [templateId, body.dept || null, body.title || null, body.name, body.email, body.sendType, body.enabled === false ? 0 : 1]
       );
       result.added++;
     }
