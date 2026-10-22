@@ -147,22 +147,25 @@ export async function initDatabase() {
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(64) NOT NULL DEFAULT '默认模板',
     content MEDIUMTEXT,
-    period_type VARCHAR(8) NOT NULL DEFAULT '周报',
     with_attachment TINYINT(1) NOT NULL DEFAULT 0,
     mail_title VARCHAR(128) NULL,
     mail_subtitle VARCHAR(255) NULL,
     mail_subject VARCHAR(255) NULL,
     mail_signature TEXT NULL,
+    subject_with_date TINYINT(1) NOT NULL DEFAULT 1,
+    subtitle_date_mode VARCHAR(8) NOT NULL DEFAULT 'none',
+    subject_date_mode VARCHAR(8) NOT NULL DEFAULT 'day',
+    highlights_weeks INT NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
-  // 兼容旧表：周期类型（周报/双周报/月报，决定重点进展汇总的时间窗口）
+  // 兼容旧表：周期类型已下线（重点进展窗口改为独立单选），若仍存在则删除该列
   const [periodCol] = await p.query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = 'period_type'`
   );
-  if (periodCol.length === 0) {
-    await p.query("ALTER TABLE report_templates ADD COLUMN period_type VARCHAR(8) NOT NULL DEFAULT '周报'");
+  if (periodCol.length > 0) {
+    await p.query('ALTER TABLE report_templates DROP COLUMN period_type');
   }
   // 兼容旧表：发送时是否附带 Excel 附件（0/1）
   const [attachCol] = await p.query(
@@ -178,6 +181,10 @@ export async function initDatabase() {
     ['mail_subtitle', 'ALTER TABLE report_templates ADD COLUMN mail_subtitle VARCHAR(255) NULL'],
     ['mail_subject', 'ALTER TABLE report_templates ADD COLUMN mail_subject VARCHAR(255) NULL'],
     ['mail_signature', 'ALTER TABLE report_templates ADD COLUMN mail_signature TEXT NULL'],
+    ['subject_with_date', 'ALTER TABLE report_templates ADD COLUMN subject_with_date TINYINT(1) NOT NULL DEFAULT 1'],
+    ['subtitle_date_mode', 'ALTER TABLE report_templates ADD COLUMN subtitle_date_mode VARCHAR(8) NOT NULL DEFAULT \'none\''],
+    ['subject_date_mode', 'ALTER TABLE report_templates ADD COLUMN subject_date_mode VARCHAR(8) NOT NULL DEFAULT \'day\''],
+    ['highlights_weeks', 'ALTER TABLE report_templates ADD COLUMN highlights_weeks INT NOT NULL DEFAULT 1'],
   ]) {
     const [exists] = await p.query(
       `SELECT 1 FROM information_schema.columns
@@ -185,6 +192,18 @@ export async function initDatabase() {
       [col]
     );
     if (exists.length === 0) await p.query(ddl);
+  }
+  // 旧「附加系统时间」布尔开关迁移到日期模式：勾选(day) / 不勾(none)
+  const [sdmCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'report_templates' AND column_name = 'subject_date_mode'`
+  );
+  if (sdmCol.length > 0) {
+    await p.query(
+      `UPDATE report_templates
+       SET subject_date_mode = IF(subject_with_date = 0, 'none', 'day')
+       WHERE subject_date_mode = 'day' AND subject_with_date = 0`
+    );
   }
   // 项目关联人（需求侧联系人）：一个项目可有多名关联人
   // send_to/send_cc/send_bcc 分别表示邮件主送/抄送/密送
@@ -291,10 +310,11 @@ export async function initDatabase() {
     sort_order INT NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
-  // 周报邮件 VIP 收件人（send_type：主送/抄送/密送；sort_order 控制同组内顺序；template_id 绑定模板，各模板独立名单）
+  // 周报邮件 VIP 收件人（send_type：主送/抄送/密送；sort_order 控制同组内顺序；template_id 绑定模板，各模板独立名单；enabled=0 不发送，便于测试）
   await p.query(`CREATE TABLE IF NOT EXISTS vip_recipients (
     id INT AUTO_INCREMENT PRIMARY KEY,
     template_id INT NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
     dept VARCHAR(128),
     title VARCHAR(16),
     name VARCHAR(64) NOT NULL,
@@ -316,6 +336,13 @@ export async function initDatabase() {
       'UPDATE vip_recipients SET template_id = (SELECT MIN(id) FROM report_templates) WHERE template_id IS NULL'
     );
     await p.query('ALTER TABLE vip_recipients MODIFY COLUMN template_id INT NOT NULL');
+  }
+  const [vipEnabledCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'vip_recipients' AND column_name = 'enabled'`
+  );
+  if (vipEnabledCol.length === 0) {
+    await p.query('ALTER TABLE vip_recipients ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1');
   }
   // 兼容旧表：排序列
   const [vipSortCol] = await p.query(

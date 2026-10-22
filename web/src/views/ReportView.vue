@@ -2,20 +2,32 @@
   <div>
     <h2>周报管理</h2>
 
+    <!-- 模板标签页：每个模板一套独立的编辑/生成结果/发送设置 -->
+    <div v-if="templates.length" class="tpl-tabs">
+      <button
+        v-for="t in templates"
+        :key="t.id"
+        class="tpl-tab"
+        :class="{ active: t.id === currentId }"
+        :style="tabStyle(t)"
+        @click="switchTpl(t.id)"
+      >{{ t.name }}</button>
+    </div>
 
-    <div class="card">
+    <div class="tpl-workspace" :style="{ background: workspaceBg }">
+    <div class="card tpl-card">
       <div class="card-head">
         <div class="tpl-select-row">
-          <select v-model="currentId" @change="onSelect" class="tpl-select">
-            <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-          </select>
-          <select v-model="currentPeriod" class="period-select" title="周期类型：决定重点进展汇总最近几个周报期">
-            <option v-for="t in ['周报', '双周报', '月报']" :key="t" :value="t">{{ t }}</option>
-          </select>
+          <span class="sub-date-opts hl-weeks" title="重点进展合并最近几个周报期的周进展">
+            <span>重点进展窗口：</span>
+            <label><input type="radio" :value="1" v-model.number="currentHlWeeks" /> 最近1个周报期</label>
+            <label><input type="radio" :value="2" v-model.number="currentHlWeeks" /> 最近2个周报期</label>
+            <label><input type="radio" :value="4" v-model.number="currentHlWeeks" /> 最近4个周报期</label>
+          </span>
           <label class="attach-check" title="发送邮件时附带「项目进展清单」Excel 附件">
             <input type="checkbox" v-model="currentAttach" /> 附带附件
           </label>
-          <button @click="openMailTitle" :disabled="!currentId" title="配置该模板富文本邮件的标题与副标题">标题设置</button>
+          <button class="accent-amber" @click="openMailTitle" :disabled="!currentId" title="配置该模板富文本邮件的标题与副标题">标题设置</button>
           <button @click="rename" :disabled="!currentId">重命名</button>
           <button @click="save" :disabled="!currentId">{{ savedTip || '保存' }}</button>
           <button @click="saveAs" :disabled="templates.length >= 5">另存为新模板</button>
@@ -84,8 +96,15 @@
       <div v-show="mailOpen" class="mail-body">
       <div class="mail-config">
         <label>邮件主题
-          <input type="text" v-model="mailSubject" :placeholder="defaultSubject(reportDate)" />
+          <input type="text" v-model="mailSubject" :placeholder="subjectPlaceholder" />
+          <span class="sub-date-opts" style="gap:10px">
+            <label><input type="radio" value="none" v-model="currentSubjectMode" /> 不增加</label>
+            <label><input type="radio" value="day" v-model="currentSubjectMode" /> 增加系统日期</label>
+            <label><input type="radio" value="week" v-model="currentSubjectMode" /> 增加系统日期（一周）</label>
+            <label><input type="radio" value="biweek" v-model="currentSubjectMode" /> 增加系统日期（两周）</label>
+          </span>
         </label>
+        <p class="subject-preview">最终主题：{{ subjectPreview }}</p>
         <label>邮件签名
           <textarea v-model="mailSignature" rows="3" placeholder="留空则不附加签名"></textarea>
         </label>
@@ -104,7 +123,7 @@
           <input ref="vipFileInput" type="file" accept=".xlsx,.xls" hidden @change="onVipImport" />
         </div>
       </div>
-      <p class="hint-tip">主题、签名与收件人名单均按当前模板绑定维护；发送方式决定收件人在邮件中的位置（主送/抄送/密送），发送时按「姓名&lt;邮箱&gt;」格式组装；导入格式与导出一致。</p>
+      <p class="hint-tip">主题、签名与收件人名单均按当前模板绑定维护；「是否发送」勾选才参与发送（便于测试）；发送方式决定收件人在邮件中的位置（主送/抄送/密送），发送时按「姓名&lt;邮箱&gt;」格式组装；导入格式与导出一致（是否发送列填「否」则不发送）。</p>
       <div v-if="vipImportResult" class="import-result">
         <p class="ok-tip">
           导入完成：新增 {{ vipImportResult.added }} 条，跳过重复 {{ vipImportResult.skipped }} 条，失败 {{ vipImportResult.errors.length }} 条
@@ -112,10 +131,13 @@
       </div>
       <table class="vip-table">
         <thead>
-          <tr><th>部门</th><th>职务</th><th>姓名</th><th>邮箱</th><th>发送方式</th><th>排序</th><th>操作</th></tr>
+          <tr><th>是否发送</th><th>部门</th><th>职务</th><th>姓名</th><th>邮箱</th><th>发送方式</th><th>排序</th><th>操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="r in recipients" :key="r.id">
+            <td>
+              <input type="checkbox" :checked="!!r.enabled" title="勾选才发送，取消则不发送（便于测试）" @change="toggleVip(r)" />
+            </td>
             <td>{{ r.dept }}</td>
             <td>{{ r.title }}</td>
             <td>{{ r.name }}</td>
@@ -154,6 +176,8 @@
       </div>
     </div>
 
+    </div>
+
     <div v-if="mailTitleOpen" class="modal">
       <div class="dialog">
         <h3>邮件标题设置（{{ current()?.name || '当前模板' }}）</h3>
@@ -161,9 +185,17 @@
           <input type="text" v-model="mailTitleDraft" placeholder="留空用默认：省本部重点工程项目进展" />
         </label>
         <label>副标题
-          <input type="text" v-model="mailSubtitleDraft" placeholder="留空用系统日期" />
+          <input type="text" v-model="mailSubtitleDraft" placeholder="留空即不显示副标题" />
         </label>
-        <p class="hint-tip">配置只影响富文本邮件页头（标题条），与邮件主题相互独立。</p>
+        <div class="sub-date-opts">
+          <span>日期：</span>
+          <label><input type="radio" value="none" v-model="subtitleModeDraft" /> 不增加</label>
+          <label><input type="radio" value="day" v-model="subtitleModeDraft" /> 增加系统日期</label>
+          <label><input type="radio" value="week" v-model="subtitleModeDraft" /> 增加系统日期（一周）</label>
+          <label><input type="radio" value="biweek" v-model="subtitleModeDraft" /> 增加系统日期（两周）</label>
+        </div>
+        <p class="subject-preview">最终副标题：{{ subtitlePreviewDraft }}</p>
+        <p class="hint-tip">配置只影响富文本邮件页头（标题条），与邮件主题相互独立；副标题留空即不显示。</p>
         <p v-if="error" class="error">{{ error }}</p>
         <div class="dialog-actions">
           <button class="primary" @click="saveMailTitle">保存</button>
@@ -197,13 +229,12 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { api } from '../api.js';
-import { exportAttachment, buildAttachmentBase64, systemDate } from '../exportExcel.js';
-import { buildEmailShell, signatureHtml, defaultSubject, renderWeeklyBodyHtml } from '../weeklyMail.js';
+import { exportAttachment, buildAttachmentBase64, systemDate, systemDateCompact } from '../exportExcel.js';
+import { buildEmailShell, signatureHtml, renderWeeklyBodyHtml, buildMailSubject, subtitleWithDate } from '../weeklyMail.js';
 
 const templates = ref([]);
 const currentId = ref(null);
 const template = ref('');
-const currentPeriod = ref('周报'); // 周报 / 双周报 / 月报：决定重点进展汇总的时间窗口
 const currentAttach = ref(false); // 发送时是否附带项目进展清单 Excel
 const currentMailTitle = ref(''); // 富文本邮件标题（留空用默认）
 const currentMailSubtitle = ref(''); // 富文本邮件副标题（留空用系统日期）
@@ -211,22 +242,30 @@ const currentMailSubtitle = ref(''); // 富文本邮件副标题（留空用系�
 const mailTitleOpen = ref(false);
 const mailTitleDraft = ref('');
 const mailSubtitleDraft = ref('');
+const subtitleModeDraft = ref('none'); // 副标题日期模式：none/day/week/biweek
+const currentSubtitleMode = ref('none');
 
 function openMailTitle() {
   mailTitleDraft.value = currentMailTitle.value;
   mailSubtitleDraft.value = currentMailSubtitle.value;
+  subtitleModeDraft.value = currentSubtitleMode.value;
   mailTitleOpen.value = true;
 }
+// 弹窗内最终副标题预览
+const subtitlePreviewDraft = computed(() =>
+  subtitleWithDate(mailSubtitleDraft.value, subtitleModeDraft.value, systemDate()));
 
 async function saveMailTitle() {
   error.value = '';
   try {
-    await api.updateReportTemplate(
-      currentId.value, current().name, template.value, currentPeriod.value,
-      currentAttach.value, mailTitleDraft.value, mailSubtitleDraft.value
-    );
+    await api.updateReportTemplate(currentId.value, tplPayload({
+      mailTitle: mailTitleDraft.value,
+      mailSubtitle: mailSubtitleDraft.value,
+      subtitleDateMode: subtitleModeDraft.value,
+    }));
     currentMailTitle.value = mailTitleDraft.value;
     currentMailSubtitle.value = mailSubtitleDraft.value;
+    currentSubtitleMode.value = subtitleModeDraft.value;
     mailTitleOpen.value = false;
     await load(false);
   } catch (e) {
@@ -249,7 +288,15 @@ const mailOpen = ref(false);
 const richFrame = ref(null);
 // 用户在富文本里的直接编辑结果（null 表示未编辑，用生成值）
 const editedHtml = ref(null);
-const mailSubject = ref(''); // 邮件主题（按模板绑定，留空用默认）
+const mailSubject = ref(''); // 邮件主题（按模板绑定，留空用默认基名）
+const currentSubjectMode = ref('day'); // 主题日期模式：none/day/week/biweek（按模板绑定，默认 day）
+const currentHlWeeks = ref(1); // 重点进展合并窗口：1/2/4 个周报期（按模板绑定，默认 1）
+// 主题输入框占位：预览默认基名效果
+const subjectPlaceholder = computed(() =>
+  buildMailSubject({ subject: '', mode: currentSubjectMode.value, date: systemDate() }));
+// 最终主题实时预览（与发送时拼法一致）
+const subjectPreview = computed(() =>
+  buildMailSubject({ subject: mailSubject.value, mode: currentSubjectMode.value, date: systemDate() }));
 const mailSignature = ref(''); // 邮件签名（按模板绑定）
 const savingConfig = ref(false);
 const configTip = ref('');
@@ -267,7 +314,7 @@ const weeklyLogs = ref([]);
 const placeholderTip =
   '在此粘贴模板，使用 {{项目总数}}、{{在建项目总数}}、{{近1周交付项目数}}、{{近2周交付项目数}}、{{拟取消数}}、{{收入相关_项目数}}、{{收入相关_占比}}、{{收入相关_金额亿}}、{{收入相关_重点进展}}、{{收入相关_项目实施阶段_项目数}} 等占位符';
 const hintText =
-  '可用占位符：{{项目总数}} {{在建项目总数}}（剔除终验归档阶段）{{近1周交付项目数}} {{近2周交付项目数}}（按阶段变更为终验归档的时间统计）{{拟取消数}}；每个分类（收入相关/基础能力/支撑后端）支持 {{分类名_项目数}} {{分类名_占比}} {{分类名_金额亿}} {{分类名_重点进展}} {{分类名_重点进展_请购到货率版本}}（项目名后附最近一期请购/到货完成率），以及按阶段统计的 {{分类名_阶段名_项目数}}（如 {{基础能力_勘察设计阶段_项目数}}，阶段名取自项目基础信息，无对应项目时替换为 0）；以上均提供在建变体：{{分类名_在建_项目数}} {{分类名_在建_占比}}（占在建总数比，含拟取消，与「在建项目总数」同口径）{{分类名_在建_金额亿}} {{分类名_在建_阶段名_项目数}}（剔除终验归档）。模板可选周期类型（周报/双周报/月报），重点进展按最近 1/2/4 个周报期自动合并。模板最多保存 5 个。';
+  '可用占位符：{{项目总数}} {{在建项目总数}}（剔除终验归档阶段）{{在建项目总数_剔除拟取消}}（再剔除拟取消分类）{{近1周交付项目数}} {{近2周交付项目数}}（按阶段变更为终验归档的时间统计）{{拟取消数}}；每个分类（收入相关/基础能力/支撑后端）支持 {{分类名_项目数}} {{分类名_占比}} {{分类名_金额亿}} {{分类名_重点进展}} {{分类名_重点进展_请购到货率版本}}（项目名后附最近一期请购/到货完成率），以及按阶段统计的 {{分类名_阶段名_项目数}}（如 {{基础能力_勘察设计阶段_项目数}}，阶段名取自项目基础信息，无对应项目时替换为 0）；以上均提供在建变体：{{分类名_在建_项目数}} {{分类名_在建_占比}}（分母为在建总数）{{分类名_在建_剔除拟取消_占比}}（分母为在建总数剔除拟取消）{{分类名_在建_金额亿}} {{分类名_在建_阶段名_项目数}}（剔除终验归档）。「重点进展窗口」单选决定重点进展按最近 1/2/4 个周报期合并（独立于周期类型）。模板最多保存 5 个。';
 
 // 模板高亮：底层 pre 把 {{占位符}} 标红，上层 textarea 文字透明（光标可见）
 const ta = ref(null);
@@ -294,18 +341,50 @@ function current() {
 
 function onSelect() {
   template.value = current()?.content ?? '';
-  currentPeriod.value = current()?.period_type ?? '周报';
   currentAttach.value = !!current()?.with_attachment;
   currentMailTitle.value = current()?.mail_title ?? '';
   currentMailSubtitle.value = current()?.mail_subtitle ?? '';
   mailSubject.value = current()?.mail_subject ?? '';
   mailSignature.value = current()?.mail_signature ?? '';
-  // 发送记录也随模板切换
-  loadWeeklyLogs();
+  currentSubjectMode.value = current()?.subject_date_mode ?? 'day';
+  currentSubtitleMode.value = current()?.subtitle_date_mode ?? 'none';
+  currentHlWeeks.value = [1, 2, 4].includes(Number(current()?.highlights_weeks)) ? Number(current()?.highlights_weeks) : 1;
   generated.value = '';
-  // 切换模板 → 载入该模板独立的 VIP 收件人名单
-  if (currentId.value) loadVip();
+  editedHtml.value = null;
+  // 切换模板 → 载入该模板独立的 VIP 收件人名单与发送记录
+  if (currentId.value) {
+    loadVip();
+    loadWeeklyLogs();
+  }
 }
+
+// 标签页切换：选中模板并载入其全套上下文
+function switchTpl(id) {
+  if (id === currentId.value) return;
+  currentId.value = id;
+  onSelect();
+}
+
+// 每个模板标签页使用不同底色（按模板顺序循环取色），选中标签加深色顶边
+const TAB_COLORS = [
+  { bg: '#e0f2fe', deep: '#0284c7', ws: '#bae6fd' }, // 蓝
+  { bg: '#dcfce7', deep: '#16a34a', ws: '#86efac' }, // 绿
+  { bg: '#fef3c7', deep: '#d97706', ws: '#fcd34d' }, // 橙
+  { bg: '#fce7f3', deep: '#db2777', ws: '#f9a8d4' }, // 粉
+  { bg: '#ede9fe', deep: '#7c3aed', ws: '#c4b5fd' }, // 紫
+];
+function tabColor(t) {
+  return TAB_COLORS[Math.max(0, templates.value.indexOf(t)) % TAB_COLORS.length];
+}
+function tabStyle(t) {
+  const c = tabColor(t);
+  if (t.id === currentId.value) {
+    return `background:#ffffff; color:${c.deep}; border-top:3px solid ${c.deep}; font-weight:600; padding-top:6px;`;
+  }
+  return `background:${c.bg}; color:${c.deep};`;
+}
+// 当前标签页对应的工作区底色（整个版面跟随模板色，避免误操作）
+const workspaceBg = computed(() => tabColor(current())?.ws ?? 'transparent');
 
 async function load(selectFirst = true) {
   const res = await api.getReportTemplates();
@@ -319,10 +398,27 @@ async function load(selectFirst = true) {
   onSelect();
 }
 
+// 组装当前模板全量保存字段（对象传参，避免位置参数错位）
+function tplPayload(overrides = {}) {
+  return {
+    name: current().name,
+    content: template.value,
+    withAttachment: currentAttach.value,
+    mailTitle: currentMailTitle.value,
+    mailSubtitle: currentMailSubtitle.value,
+    mailSubject: mailSubject.value,
+    mailSignature: mailSignature.value,
+    subjectWithDate: currentSubjectMode.value !== 'none',
+    subjectDateMode: currentSubjectMode.value,
+    subtitleDateMode: currentSubtitleMode.value,
+    highlightsWeeks: currentHlWeeks.value,
+    ...overrides,
+  };
+}
 async function save() {
   error.value = '';
   try {
-    await api.updateReportTemplate(currentId.value, current().name, template.value, currentPeriod.value, currentAttach.value, currentMailTitle.value, currentMailSubtitle.value);
+    await api.updateReportTemplate(currentId.value, tplPayload());
     savedTip.value = '已保存';
     setTimeout(() => { savedTip.value = ''; }, 2000);
     await load(false);
@@ -340,7 +436,7 @@ async function rename() {
   }
   error.value = '';
   try {
-    await api.updateReportTemplate(currentId.value, name.trim(), template.value, currentPeriod.value, currentAttach.value, currentMailTitle.value, currentMailSubtitle.value);
+    await api.updateReportTemplate(currentId.value, tplPayload({ name: name.trim() }));
     await load(false);
   } catch (e) {
     error.value = e.message;
@@ -356,7 +452,7 @@ async function saveAs() {
   }
   error.value = '';
   try {
-    const r = await api.createReportTemplate(name.trim(), template.value, currentPeriod.value, currentAttach.value, currentMailTitle.value, currentMailSubtitle.value);
+    const r = await api.createReportTemplate(tplPayload({ name: name.trim() }));
     await load(false);
     currentId.value = r.id;
     onSelect();
@@ -383,7 +479,7 @@ async function generate() {
   error.value = '';
   try {
     // 先保存再生成，保证预览用的是当前编辑内容
-    await api.updateReportTemplate(currentId.value, current().name, template.value, currentPeriod.value, currentAttach.value, currentMailTitle.value, currentMailSubtitle.value);
+    await api.updateReportTemplate(currentId.value, tplPayload());
     generated.value = (await api.getReportPreview(currentId.value)).text;
     // 生成后自动滚动到结果区
     await nextTick();
@@ -482,7 +578,7 @@ const generatedEmailHtml = computed(() => {
   // 商务外壳（标题条+日期）+ 正文 + 签名，与发送出去的邮件一致
   return buildEmailShell(body + signatureHtml(mailSignature.value), {
     title: currentMailTitle.value,
-    subtitle: currentMailSubtitle.value || systemDate(),
+    subtitle: subtitleWithDate(currentMailSubtitle.value, currentSubtitleMode.value, systemDate()),
   });
 });
 
@@ -508,11 +604,12 @@ const currentEmailHtml = computed(() => editedHtml.value ?? generatedEmailHtml.v
 function addrText(r) {
   return `${r.name}<${r.email}>`;
 }
+// 仅统计勾选了"是否发送"的联系人（与发送口径一致）
 function groupAddrs(type) {
-  return recipients.value.filter((r) => r.send_type === type).map(addrText);
+  return recipients.value.filter((r) => r.enabled && r.send_type === type).map(addrText);
 }
 function vipCount(type) {
-  return recipients.value.filter((r) => r.send_type === type).length;
+  return recipients.value.filter((r) => r.enabled && r.send_type === type).length;
 }
 // 结果卡上的本次收件人摘要
 const recipientsSummary = computed(() => {
@@ -567,8 +664,14 @@ async function sendMail() {
   const cc = groupAddrs('抄送');
   const bcc = groupAddrs('密送');
   const line = (label, list) => `${label}：${list.length ? list.join('、') : '（无）'}`;
+  const finalSubject = subjectPreview.value;
+  // 附件文件名（与生成附件时的命名一致）
+  const attachmentName = currentAttach.value
+    ? `工程建设部核心网室项目进展清单${systemDateCompact()}.xlsx`
+    : '';
   if (!window.confirm(
-    `确认发送周报邮件？\n模板：${current()?.name || ''}\n主题：${mailSubject.value.trim() || defaultSubject(reportDate.value)}\n` +
+    `确认发送周报邮件？\n模板：${current()?.name || ''}\n主题：${finalSubject}\n` +
+    `附件：${attachmentName || '（无）'}\n` +
     `${line('主送', to)}\n${line('抄送', cc)}\n${line('密送', bcc)}`
   )) return;
   sending.value = true;
@@ -587,7 +690,7 @@ async function sendMail() {
     }
     const res = await api.sendWeeklyMail({
       templateId: currentId.value,
-      subject: mailSubject.value.trim() || defaultSubject(reportDate.value),
+      subject: finalSubject,
       html: currentEmailHtml.value,
       text: generated.value,
       attachment,
@@ -608,11 +711,7 @@ async function saveMailConfig() {
   savingConfig.value = true;
   configTip.value = '';
   try {
-    await api.updateReportTemplate(
-      currentId.value, current().name, template.value, currentPeriod.value,
-      currentAttach.value, currentMailTitle.value, currentMailSubtitle.value,
-      mailSubject.value, mailSignature.value
-    );
+    await api.updateReportTemplate(currentId.value, tplPayload());
     await load(false);
     configTip.value = '已保存到当前模板';
     setTimeout(() => { configTip.value = ''; }, 2000);
@@ -634,8 +733,8 @@ async function loadVip() {
 function openVipForm(r) {
   vipFormError.value = '';
   vipEditing.value = r
-    ? { id: r.id, dept: r.dept ?? '', title: r.title ?? '', name: r.name, email: r.email, sendType: r.send_type }
-    : { id: null, dept: '', title: '', name: '', email: '', sendType: '主送' };
+    ? { id: r.id, dept: r.dept ?? '', title: r.title ?? '', name: r.name, email: r.email, sendType: r.send_type, enabled: !!r.enabled }
+    : { id: null, dept: '', title: '', name: '', email: '', sendType: '主送', enabled: true };
 }
 
 async function saveVip() {
@@ -648,6 +747,19 @@ async function saveVip() {
     await loadVip();
   } catch (e) {
     vipFormError.value = e.message;
+  }
+}
+
+// 是否发送：勾选才参与发送（便于测试），整行更新 enabled
+async function toggleVip(r) {
+  try {
+    await api.updateVipRecipient(currentId.value, r.id, {
+      dept: r.dept ?? '', title: r.title ?? '', name: r.name,
+      email: r.email, sendType: r.send_type, enabled: !r.enabled,
+    });
+    await loadVip();
+  } catch (e) {
+    error.value = e.message;
   }
 }
 
@@ -727,8 +839,66 @@ onMounted(async () => {
 <style scoped>
 .card { margin-bottom: 24px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+/* 模板标签页 */
+.tpl-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+}
+.tpl-tab {
+  padding: 8px 22px;
+  border: 1px solid var(--hairline);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--ink-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+.tpl-tab:hover { filter: brightness(0.96); }
+.tpl-tab.active { padding-bottom: 9px; } /* 盖住卡片上边框，形成连通效果 */
+.tpl-card { border-top-left-radius: 0; }
+/* 标签页工作区：整个版面随模板着色 */
+.tpl-workspace {
+  border-radius: 0 var(--r-lg) var(--r-lg) var(--r-lg);
+  padding: 16px;
+}
+.tpl-workspace .card:last-child { margin-bottom: 0; }
+
+/* 醒目控件：周期类型（蓝）与标题设置（琥珀） */
+.accent-blue {
+  background: #0086d4 !important;
+  color: #fff !important;
+  border-color: #0086d4 !important;
+  font-weight: 500;
+}
+.accent-amber {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+  font-weight: 500;
+}
+.accent-amber:hover { background: #d97706; }
+.accent-amber:disabled { background: var(--canvas-soft); border-color: var(--hairline); color: var(--ink-mute); }
 .tpl-select-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .period-select { padding: 6px 10px; border: 1px solid var(--hairline); border-radius: var(--r-sm); font-size: 14px; }
+.sub-date-opts {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+  flex-wrap: wrap;
+}
+.sub-date-opts label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.subject-preview {
+  margin: -2px 0 0;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+.subject-preview::before { content: ''; }
 .attach-check {
   display: flex;
   align-items: center;

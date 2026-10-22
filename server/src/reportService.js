@@ -6,6 +6,7 @@ export function renderTemplate(template, data) {
     '项目总数': data.total,
     '拟取消数': data.cancelled,
     '在建项目总数': data.building,
+    '在建项目总数_剔除拟取消': data.buildingNoCancel,
     '近1周交付项目数': data.delivered1w,
     '近2周交付项目数': data.delivered2w,
   };
@@ -18,6 +19,7 @@ export function renderTemplate(template, data) {
     // 在建变体：剔除终验归档后的项目数/占比/金额
     flat[`${cat}_在建_项目数`] = c.buildingCount ?? 0;
     flat[`${cat}_在建_占比`] = c.buildingPct ?? 0;
+    flat[`${cat}_在建_剔除拟取消_占比`] = c.buildingNoCancelPct ?? 0;
     flat[`${cat}_在建_金额亿`] = c.buildingBudgetYi ?? '0.00';
   }
   for (const [k, v] of Object.entries(flat)) {
@@ -35,11 +37,9 @@ export function renderTemplate(template, data) {
 }
 
 // 从数据库聚合生成渲染所需数据
-// periodType：周报=最近1个周报期，双周报=2，月报=4；重点进展按窗口内各周合并
-const PERIOD_WEEKS = { 周报: 1, 双周报: 2, 月报: 4 };
-
-export async function buildReportData(pool, { periodType = '周报' } = {}) {
-  const weeks = PERIOD_WEEKS[periodType] ?? 1;
+// highlightsWeeks：重点进展合并最近 1/2/4 个周报期（模板单选，独立于周期类型）
+export async function buildReportData(pool, { highlightsWeeks = 1 } = {}) {
+  const weeks = [1, 2, 4].includes(Number(highlightsWeeks)) ? Number(highlightsWeeks) : 1;
   const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM projects');
   const [[{ cancelled }]] = await pool.query(
     "SELECT COUNT(*) AS cancelled FROM projects WHERE category = '拟取消'"
@@ -47,6 +47,11 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
   // 在建项目总数：按项目阶段剔除终验归档（拟取消是分类维度，不影响在建判断）
   const [[{ n: building }]] = await pool.query(
     "SELECT COUNT(*) AS n FROM projects WHERE COALESCE(stage, '') NOT LIKE '%终验归档%'"
+  );
+  // 在建且剔除拟取消分类（= 在建项目总数 - 分类为拟取消且未终验归档的项目）
+  const [[{ n: buildingNoCancel }]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM projects
+     WHERE COALESCE(stage, '') NOT LIKE '%终验归档%' AND COALESCE(category, '') <> '拟取消'`
   );
   // 近N周交付：阶段变为终验归档的时间在最近N周内（stage_changed_at 由导入流程在阶段变化时写入）
   const [[{ n: w1 }]] = await pool.query(
@@ -122,7 +127,7 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
        ) latest ON latest.project_code = wp.project_code AND latest.md = wp.report_date`
     );
     const rateMap = new Map(rateRows.map((r) => [r.project_code, r]));
-    const fmtRate = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? '—' : `${(Number(v) * 100).toFixed(1)}%`);
+    const fmtRate = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? '—' : `${Math.round(Number(v) * 100)}%`);
     for (const [code, p] of byProject) {
       const parts = [];
       for (const d of p.details) {
@@ -159,6 +164,8 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
       // 在建变体（剔除终验归档；占比分母为全部在建项目，与「在建项目总数」同口径）
       buildingCount,
       buildingPct: building ? Math.round((buildingCount / building) * 1000) / 10 : 0,
+      // 在建剔除拟取消占比（分母为「在建项目总数_剔除拟取消」）
+      buildingNoCancelPct: buildingNoCancel ? Math.round((buildingCount / buildingNoCancel) * 1000) / 10 : 0,
       buildingBudgetYi: brow ? (Number(brow.budget) / 10000).toFixed(2) : '0.00',
       buildingStageCounts: Object.fromEntries(
         buildingStageRows.filter((r) => r.category === cat).map((r) => [r.stage, r.n])
@@ -177,5 +184,5 @@ export async function buildReportData(pool, { periodType = '周报' } = {}) {
     };
   }
 
-  return { total, cancelled, building, delivered1w: w1, delivered2w: w2, categories };
+  return { total, cancelled, building, buildingNoCancel, delivered1w: w1, delivered2w: w2, categories };
 }

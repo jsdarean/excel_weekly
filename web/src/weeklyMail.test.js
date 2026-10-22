@@ -1,9 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { WEEKLY_MAIL_TITLE, defaultSubject, buildEmailShell, signatureHtml, renderWeeklyBodyHtml } from './weeklyMail.js';
+import { WEEKLY_MAIL_TITLE, defaultSubject, buildEmailShell, signatureHtml, renderWeeklyBodyHtml, buildMailSubject, subtitleWithDate } from './weeklyMail.js';
 
 describe('defaultSubject', () => {
   it('默认主题为 标题（日期）', () => {
     expect(defaultSubject('2026-10-17')).toBe('省本部重点工程项目进展（2026-10-17）');
+  });
+});
+
+describe('buildMailSubject', () => {
+  it('自定义主题 + 各日期模式后缀', () => {
+    expect(buildMailSubject({ subject: '核心网室项目进展', mode: 'day', date: '2026-10-22' }))
+      .toBe('核心网室项目进展（2026-10-22）');
+    expect(buildMailSubject({ subject: '核心网室项目进展', mode: 'week', date: '2026-10-22' }))
+      .toBe('核心网室项目进展（2026-10-16~2026-10-22）');
+    expect(buildMailSubject({ subject: '核心网室项目进展', mode: 'biweek', date: '2026-10-22' }))
+      .toBe('核心网室项目进展（2026-10-09~2026-10-22）');
+  });
+  it('留空用默认基名；none 时无日期后缀', () => {
+    expect(buildMailSubject({ subject: '', mode: 'day', date: '2026-10-22' }))
+      .toBe('省本部重点工程项目进展（2026-10-22）');
+    expect(buildMailSubject({ subject: '', mode: 'none' })).toBe('省本部重点工程项目进展');
+    expect(buildMailSubject({ subject: '  ', mode: 'none' })).toBe('省本部重点工程项目进展');
   });
 });
 
@@ -22,6 +39,19 @@ describe('buildEmailShell', () => {
   });
   it('无副标题时不渲染副标题行', () => {
     expect(buildEmailShell('<p>x</p>')).not.toContain('font-size:12px;margin-top:4px');
+  });
+});
+
+describe('subtitleWithDate', () => {
+  it('各模式在副标题后拼接对应日期区间', () => {
+    expect(subtitleWithDate('第（10）期', 'day', '2026-10-22')).toBe('第（10）期（2026-10-22）');
+    expect(subtitleWithDate('第（10）期', 'week', '2026-10-22')).toBe('第（10）期（2026-10-16~2026-10-22）');
+    expect(subtitleWithDate('第（10）期', 'biweek', '2026-10-22')).toBe('第（10）期（2026-10-09~2026-10-22）');
+    expect(subtitleWithDate('第（10）期', 'none', '2026-10-22')).toBe('第（10）期');
+  });
+  it('副标题留空时直接输出日期部分；none 时留空即空', () => {
+    expect(subtitleWithDate('', 'day', '2026-10-22')).toBe('（2026-10-22）');
+    expect(subtitleWithDate('', 'none', '2026-10-22')).toBe('');
   });
 });
 
@@ -51,6 +81,7 @@ describe('renderWeeklyBodyHtml（给公司领导的模板结构）', () => {
   it('章节标题渲染为蓝条标题 + 灰色统计副标题', () => {
     const html = renderWeeklyBodyHtml(text);
     expect(html).toContain('border-left:4px solid #0086d4');
+    expect(html).toContain('background:#f0f7fc');
     expect(html).toContain('一、收入相关</div>');
     expect(html).toContain('25个项目，占10%');
   });

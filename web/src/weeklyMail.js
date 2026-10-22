@@ -3,9 +3,42 @@
 // 外壳标题与默认主题前缀
 export const WEEKLY_MAIL_TITLE = '省本部重点工程项目进展';
 
-// 默认主题：省本部重点项目进展（周五日期）
+// 默认邮件主题基名（可附加系统时间）
+export const DEFAULT_MAIL_SUBJECT = '省本部重点工程项目进展';
+
+// 在文本后按模式拼接日期：none 不拼；day（当天）；week（前6天~当天）；biweek（前13天~当天）
+export function appendDateSuffix(base, mode, today) {
+  const b = String(base ?? '').trim();
+  if (mode === 'day') return `${b}（${today}）`;
+  if (mode === 'week') return `${b}（${shiftDate(today, -6)}~${today}）`;
+  if (mode === 'biweek') return `${b}（${shiftDate(today, -13)}~${today}）`;
+  return b;
+}
+
+// 组装最终邮件主题：自定义主题留空用默认基名；mode 决定后缀日期
+export function buildMailSubject({ subject = '', mode = 'day', date = '' } = {}) {
+  const base = String(subject).trim() || DEFAULT_MAIL_SUBJECT;
+  return appendDateSuffix(base, mode, date);
+}
+
+// 默认主题：标题（周五日期），用于外壳副标题缺省等场景
 export function defaultSubject(reportDate) {
   return `${WEEKLY_MAIL_TITLE}（${reportDate}）`;
+}
+
+// 副标题日期模式：在自定义副标题后拼接日期（留空的副标题不再默认日期，空即空）
+// mode: none=不拼接；day=（当天）；week=（前6天~当天，一周）；biweek=（前13天~当天，两周）
+function shiftDate(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function subtitleWithDate(subtitle, mode, today) {
+  return appendDateSuffix(subtitle, mode, today);
 }
 
 // 商务外壳：移动蓝标题条（标题 + 副标题）+ 白色正文区
@@ -57,7 +90,7 @@ export function renderWeeklyBodyHtml(text) {
       const title = heading[1].trim();
       const stats = heading[2]?.trim();
       out.push(
-        `<div style="margin:18px 0 10px;padding-left:10px;border-left:4px solid #0086d4;">` +
+        `<div style="margin:18px 0 10px;padding:8px 12px;border-left:4px solid #0086d4;background:#f0f7fc;border-radius:0 4px 4px 0;">` +
         `<div style="font-size:15px;font-weight:bold;color:#0d3a5c;line-height:1.4;">${title}</div>` +
         (stats ? `<div style="margin-top:3px;font-size:12px;color:#6b7280;line-height:1.5;">${stats}</div>` : '') +
         `</div>`
