@@ -113,13 +113,14 @@ router.get('/preview/:code', async (req, res) => {
 });
 
 async function writeLog(pool, mail, status, error) {
+  // body 记录最终发送的正文（含预览弹窗中人工编辑后的 HTML）
   await pool.query(
-    `INSERT INTO mail_logs (project_code, report_date, subject, to_addr, cc_addr, bcc_addr, status, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO mail_logs (project_code, report_date, subject, to_addr, cc_addr, bcc_addr, body, status, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       mail.projectCode, mail.reportDate, mail.subject,
       mail.to.join(', '), mail.cc.join(', '), mail.bcc.join(', '),
-      status, error || null,
+      mail.html || null, status, error || null,
     ]
   );
 }
@@ -135,6 +136,9 @@ router.post('/send', async (req, res) => {
     if (!mail.hasContactRecipients) {
       return res.status(400).json({ error: '该项目没有勾选主送/抄送/密送的收件人' });
     }
+    // 预览弹窗中人工编辑过的正文：以编辑后的 HTML 为准发送
+    const editedHtml = String(req.body?.html ?? '').trim();
+    if (editedHtml) mail.html = editedHtml;
     const config = await getEmailConfig();
     if (!configComplete(config)) {
       return res.status(400).json({ error: '邮箱配置不完整，请先到「邮箱配置」页完善' });
@@ -169,7 +173,7 @@ router.get('/logs', async (req, res) => {
   try {
     const [rows] = await getPool().query(
       `SELECT l.id, l.project_code, p.project_name, l.report_date, l.subject,
-              l.to_addr, l.cc_addr, l.bcc_addr, l.status, l.error, l.created_at
+              l.to_addr, l.cc_addr, l.bcc_addr, l.body, l.status, l.error, l.created_at
        FROM mail_logs l
        LEFT JOIN projects p ON p.project_code = l.project_code
        ORDER BY l.id DESC LIMIT 50`

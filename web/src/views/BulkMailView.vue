@@ -106,6 +106,7 @@
             <th>主题</th>
             <th>主送</th>
             <th>状态</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -120,9 +121,27 @@
               </span>
               <span v-if="l.error" class="err-text" :title="l.error">{{ l.error }}</span>
             </td>
+            <td class="nowrap">
+              <button class="link-btn" :disabled="!l.body" @click="viewLog(l)">查看正文</button>
+            </td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 发送记录正文回看 -->
+    <div v-if="logView" class="modal-mask" @click.self="logView = null">
+      <div class="modal">
+        <h3>已发送正文 — {{ logView.project_name || logView.project_code }}</h3>
+        <div class="mail-meta">
+          <div><span class="meta-label">主题</span>{{ logView.subject }}</div>
+          <div><span class="meta-label">时间</span>{{ logView.created_at }}</div>
+        </div>
+        <iframe class="mail-frame" :srcdoc="logView.body" title="已发送正文"></iframe>
+        <div class="modal-actions">
+          <button @click="logView = null">关闭</button>
+        </div>
+      </div>
     </div>
 
     <!-- 预览弹窗：人工确认后才发送 -->
@@ -135,8 +154,9 @@
           <div><span class="meta-label">抄送</span>{{ preview.cc.join('、') || '（无）' }}</div>
           <div><span class="meta-label">密送</span>{{ preview.bcc.join('、') || '（无）' }}</div>
         </div>
-        <!-- 用 iframe 隔离邮件 HTML，避免系统全局表格样式污染邮件排版 -->
-        <iframe class="mail-frame" :srcdoc="preview.html" title="邮件预览"></iframe>
+        <p class="hint">正文可直接点击编辑，发送时以当前展示内容为准。</p>
+        <!-- 用 iframe 隔离邮件 HTML；contenteditable 支持直接编辑正文 -->
+        <iframe ref="mailFrame" class="mail-frame" :srcdoc="editableSrcdoc" title="邮件预览" @load="onMailFrameLoad"></iframe>
         <p v-if="sendTip" :class="sendTip.ok ? 'ok-tip' : 'error'">{{ sendTip.message }}</p>
         <div class="modal-actions">
           <button class="primary" :disabled="sending" @click="confirmSend(false)">
@@ -174,9 +194,24 @@ const savingCc = ref(false);
 const ccSavedTip = ref('');
 const ccError = ref('');
 
+const logView = ref(null); // 发送记录正文回看
 const preview = ref(null); // 当前预览的邮件
 const sending = ref(false);
 const sendTip = ref(null);
+const mailFrame = ref(null);
+// 预览 iframe 整封可编辑（contenteditable 注入 body），编辑内容实时同步
+const editableSrcdoc = computed(() =>
+  preview.value ? preview.value.html.replace('<body', '<body contenteditable="true"', 1) : ''
+);
+function onMailFrameLoad() {
+  const doc = mailFrame.value?.contentDocument;
+  if (!doc) return;
+  doc.addEventListener('input', () => {
+    if (preview.value) preview.value.editedHtml = doc.body.innerHTML;
+  });
+}
+// 发送/展示统一取编辑后的内容（未编辑时用原始渲染值）
+const currentPreviewHtml = computed(() => preview.value?.editedHtml ?? preview.value?.html ?? '');
 
 const hasNext = computed(() => {
   if (!preview.value) return false;
@@ -241,11 +276,17 @@ async function saveTpl() {
   }
 }
 
+// 查看某条发送记录的最终正文
+function viewLog(l) {
+  logView.value = l;
+}
+
 async function openPreview(code) {
   error.value = '';
   sendTip.value = null;
   try {
     const res = await api.previewMail(code);
+    res.mail.editedHtml = null;
     preview.value = res.mail;
     // 校验：需求人未出现在主送/抄送中 → 提醒补充项目关联人
     const missing = res.mail.missingDemandOwners || [];
@@ -277,7 +318,7 @@ async function confirmSend(next) {
   sending.value = true;
   sendTip.value = null;
   try {
-    const res = await api.sendMail(code);
+    const res = await api.sendMail(code, currentPreviewHtml.value);
     // 刷新列表与记录（发送状态可能变化）
     const [p, l] = await Promise.all([api.getMailProjects(), api.getMailLogs()]);
     projects.value = p.projects;

@@ -158,7 +158,7 @@
         <h4>发送记录</h4>
         <table class="vip-table">
           <thead>
-            <tr><th>时间</th><th>主题</th><th>主送</th><th>抄送</th><th>密送</th><th>附件</th><th>状态</th></tr>
+            <tr><th>时间</th><th>主题</th><th>主送</th><th>抄送</th><th>密送</th><th>附件</th><th>状态</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="l in weeklyLogs" :key="l.id">
@@ -169,6 +169,7 @@
               <td class="addr-cell">{{ l.bcc_addr || '—' }}</td>
               <td>{{ l.attachment || '—' }}</td>
               <td>{{ l.status }}<span v-if="l.error" class="error">（{{ l.error }}）</span></td>
+              <td><button class="link-btn" :disabled="!l.body" @click="weeklyLogView = l">查看正文</button></td>
             </tr>
           </tbody>
         </table>
@@ -200,6 +201,20 @@
         <div class="dialog-actions">
           <button class="primary" @click="saveMailTitle">保存</button>
           <button @click="mailTitleOpen = false">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="weeklyLogView" class="modal">
+      <div class="dialog log-dialog">
+        <h3>已发送正文</h3>
+        <div class="mail-meta">
+          <div>主题：{{ weeklyLogView.subject }}</div>
+          <div>时间：{{ weeklyLogView.created_at }}</div>
+        </div>
+        <iframe class="log-frame" :srcdoc="weeklyLogView.body" title="已发送正文"></iframe>
+        <div class="dialog-actions">
+          <button @click="weeklyLogView = null">关闭</button>
         </div>
       </div>
     </div>
@@ -310,6 +325,7 @@ const vipImportResult = ref(null);
 const sending = ref(false);
 const sendTip = ref('');
 const weeklyLogs = ref([]);
+const weeklyLogView = ref(null); // 周报发送记录正文回看
 
 const placeholderTip =
   '在此粘贴模板，使用 {{项目总数}}、{{在建项目总数}}、{{近1周交付项目数}}、{{近2周交付项目数}}、{{拟取消数}}、{{收入相关_项目数}}、{{收入相关_占比}}、{{收入相关_金额亿}}、{{收入相关_重点进展}}、{{收入相关_项目实施阶段_项目数}} 等占位符';
@@ -582,7 +598,7 @@ const generatedEmailHtml = computed(() => {
   });
 });
 
-// 富文本 iframe：contenteditable 可直接编辑，编辑内容实时同步到 editedHtml
+// 富文本 iframe：整封邮件可编辑（contenteditable），编辑内容实时同步到 editedHtml
 const emailSrcdoc = computed(() =>
   generatedEmailHtml.value
     ? `<!DOCTYPE html><html><body contenteditable="true" style="margin:0;padding:24px;background:#f3f4f6;">${generatedEmailHtml.value}</body></html>`
@@ -992,6 +1008,14 @@ onMounted(async () => {
 .empty { text-align: center; color: var(--ink-mute); font-size: 14px; padding: 12px 0; }
 .log-block { margin-top: 20px; }
 .log-block h4 { margin-bottom: 10px; }
+.log-dialog { min-width: 720px; }
+.log-frame {
+  width: 100%;
+  height: 480px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: #f3f4f6;
+}
 .addr-cell {
   font-size: 12px;
   color: var(--ink-secondary);

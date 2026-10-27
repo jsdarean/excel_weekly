@@ -297,10 +297,19 @@ export async function initDatabase() {
     to_addr TEXT,
     cc_addr TEXT,
     bcc_addr TEXT,
+    body MEDIUMTEXT,
     status VARCHAR(16) NOT NULL,
     error TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  // 兼容旧表：最终发送的邮件正文（含预览弹窗中人工编辑后的内容）
+  const [mailBodyCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mail_logs' AND column_name = 'body'`
+  );
+  if (mailBodyCol.length === 0) {
+    await p.query('ALTER TABLE mail_logs ADD COLUMN body MEDIUMTEXT NULL');
+  }
   // 批量邮件通用抄送人（按 sort_order 排序，enabled=0 暂停全量抄送）
   await p.query(`CREATE TABLE IF NOT EXISTS mail_cc_list (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -368,6 +377,7 @@ export async function initDatabase() {
     cc_addr TEXT,
     bcc_addr TEXT,
     attachment VARCHAR(255),
+    body MEDIUMTEXT,
     status VARCHAR(16) NOT NULL,
     error TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -386,5 +396,12 @@ export async function initDatabase() {
   );
   if (wkTplCol.length === 0) {
     await p.query('ALTER TABLE weekly_mail_logs ADD COLUMN template_id INT NOT NULL DEFAULT 0');
+  }
+  const [wkBodyCol] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'weekly_mail_logs' AND column_name = 'body'`
+  );
+  if (wkBodyCol.length === 0) {
+    await p.query('ALTER TABLE weekly_mail_logs ADD COLUMN body MEDIUMTEXT NULL');
   }
 }

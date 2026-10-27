@@ -9,11 +9,12 @@ export function formatRecipient(r) {
   return `${r.name}<${r.email}>`;
 }
 
-async function writeLog(pool, { templateId, subject, to, cc, bcc, attachment, status, error }) {
+async function writeLog(pool, { templateId, subject, to, cc, bcc, attachment, body, status, error }) {
+  // body 记录最终发送的正文（含富文本预览中人工编辑后的 HTML）
   await pool.query(
-    `INSERT INTO weekly_mail_logs (template_id, subject, to_addr, cc_addr, bcc_addr, attachment, status, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [templateId, subject, to.join('、'), cc.join('、'), bcc.join('、'), attachment || null, status, error || null]
+    `INSERT INTO weekly_mail_logs (template_id, subject, to_addr, cc_addr, bcc_addr, attachment, body, status, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [templateId, subject, to.join('、'), cc.join('、'), bcc.join('、'), attachment || null, body || null, status, error || null]
   );
 }
 
@@ -63,13 +64,13 @@ router.post('/send', async (req, res) => {
 
     try {
       const { sentFolder } = await sendAndArchive(config, { to, cc, bcc, subject, text, html, attachments: attachment ? [attachment] : [] });
-      await writeLog(pool, { templateId, subject, to, cc, bcc, attachment: attachment?.filename, status: '成功' });
+      await writeLog(pool, { templateId, subject, to, cc, bcc, attachment: attachment?.filename, body: html, status: '成功' });
       return res.json({ ok: true, message: sentFolder ? `发送成功，已存档到「${sentFolder}」` : '发送成功' });
     } catch (e) {
       // 仅 IMAP 存档失败时 SMTP 已成功发送：状态记成功，错误信息留存备查
       const archiveOnly = /IMAP|追加|存档/.test(e.message);
       await writeLog(pool, {
-        templateId, subject, to, cc, bcc, attachment: attachment?.filename,
+        templateId, subject, to, cc, bcc, attachment: attachment?.filename, body: html,
         status: archiveOnly ? '成功' : '失败',
         error: archiveOnly ? `IMAP 存档失败：${e.message}` : e.message,
       });
@@ -88,7 +89,7 @@ router.get('/logs', async (req, res) => {
   try {
     const templateId = Number(req.query.template_id ?? 0);
     const [rows] = await getPool().query(
-      `SELECT id, subject, to_addr, cc_addr, bcc_addr, attachment, status, error, created_at
+      `SELECT id, subject, to_addr, cc_addr, bcc_addr, attachment, body, status, error, created_at
        FROM weekly_mail_logs
        WHERE template_id = ? ORDER BY id DESC LIMIT 50`,
       [Number.isInteger(templateId) && templateId > 0 ? templateId : -1]

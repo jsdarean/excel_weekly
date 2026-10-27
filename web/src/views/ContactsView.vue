@@ -24,29 +24,34 @@
 
     <div class="card table-card">
       <table>
-        <thead>
-          <tr>
-            <th>部门</th><th>室</th><th>职务</th>
-            <th>姓名</th><th>邮箱</th><th>电话</th>
-            <th>主送</th><th>抄送</th><th>密送</th><th>操作</th>
-          </tr>
-        </thead>
         <tbody v-for="g in groupedContacts" :key="g.code">
           <!-- 项目分组行：点击折叠/展开 -->
           <tr class="group-row" @click="toggleGroup(g.code)">
             <td colspan="10">
-              <span class="caret">{{ expanded.has(g.code) ? '▾' : '▸' }}</span>
-              <span class="num group-code">{{ g.code }}</span>
-              <router-link class="group-name" :to="`/projects/${encodeURIComponent(g.code)}`" @click.stop>{{ g.name }}</router-link>
-              <span v-if="g.owner" class="group-owner">{{ g.owner }}</span>
-              <span class="group-stats">
-                关联人 {{ g.contacts.length }} 人 · 主送 {{ g.toCount }} / 抄送 {{ g.ccCount }} / 密送 {{ g.bccCount }}
-              </span>
-              <button class="link-btn group-add" @click.stop="openForm(null, g)">＋ 添加关联人</button>
+              <div class="group-cells">
+                <span class="gc-code">
+                  <span class="caret">{{ expanded.has(g.code) ? '▾' : '▸' }}</span>
+                  <span class="num group-code">{{ g.code }}</span>
+                </span>
+                <router-link class="group-name gc-name" :to="`/projects/${encodeURIComponent(g.code)}`" @click.stop>{{ g.name }}</router-link>
+                <span v-if="g.owner" class="group-owner gc-owner">{{ g.owner }}</span>
+                <span v-else class="gc-owner"></span>
+                <span class="group-stats gc-stats">
+                  关联人 {{ g.contacts.length }} 人 · 主送 {{ g.toCount }} / 抄送 {{ g.ccCount }} / 密送 {{ g.bccCount }}
+                </span>
+                <span class="gc-add">
+                  <button class="link-btn group-add" @click.stop="openForm(null, g)">＋ 添加关联人</button>
+                </span>
+              </div>
             </td>
           </tr>
-          <!-- 关联人子行 -->
+          <!-- 展开时显示列头 + 关联人子行 -->
           <template v-if="expanded.has(g.code)">
+            <tr class="member-head">
+              <th>部门</th><th>室</th><th>职务</th>
+              <th>姓名</th><th>邮箱</th><th>电话</th>
+              <th>主送</th><th>抄送</th><th>密送</th><th>操作</th>
+            </tr>
             <tr v-for="c in g.contacts" :key="c.id" class="member-row">
               <td>{{ c.dept }}</td>
               <td>{{ c.room }}</td>
@@ -570,7 +575,24 @@ onMounted(async () => {
   padding: 10px 12px;
   border-bottom: 2px solid var(--hairline);
   user-select: none;
+  line-height: 1.6;
 }
+/* 分组行列式布局：与项目列表一致按列对齐（编码/名称/责任人/统计/操作） */
+.group-cells {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.gc-code { flex: 0 0 200px; white-space: nowrap; }
+.gc-name {
+  flex: 0 0 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gc-owner { flex: 0 0 90px; white-space: nowrap; }
+.gc-stats { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.gc-add { flex: 0 0 auto; }
 .group-row:hover td { background: #eef1f5; }
 .caret { display: inline-block; width: 16px; color: var(--ink-mute); }
 .group-code { font-weight: 600; margin-right: 8px; }
@@ -578,7 +600,7 @@ onMounted(async () => {
 .group-name:hover { color: var(--primary); }
 .group-owner { font-weight: 700; margin-right: 12px; }
 .group-stats { color: var(--ink-mute); font-size: 13px; }
-.group-add { float: right; }
+.group-add { }
 .link-btn {
   border: none;
   background: none;
@@ -591,6 +613,17 @@ onMounted(async () => {
 
 /* 关联人子行：轻微缩进感 */
 .member-row td:first-child { padding-left: 28px; }
+
+/* 展开分组内的列头（灰色小字，区别于全局表头） */
+.member-head th {
+  background: var(--canvas-soft, #f5f6f8);
+  color: var(--ink-mute);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: center;
+}
 
 .ops { display: flex; gap: 8px; justify-content: center; }
 .empty { text-align: center; color: var(--ink-mute); font-size: 14px; padding: 16px 0; }

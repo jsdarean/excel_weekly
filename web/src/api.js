@@ -150,11 +150,11 @@ export const api = {
     }),
   getMailProjects: () => request('/api/bulk-mail/projects'),
   previewMail: (code) => request(`/api/bulk-mail/preview/${encodeURIComponent(code)}`),
-  sendMail: (code) =>
+  sendMail: (code, html) =>
     request('/api/bulk-mail/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectCode: code }),
+      body: JSON.stringify({ projectCode: code, ...(html ? { html } : {}) }),
     }),
   getMailLogs: () => request('/api/bulk-mail/logs'),
   listVipRecipients: (templateId) => request(`/api/vip-recipients${buildQuery({ template_id: templateId })}`),
