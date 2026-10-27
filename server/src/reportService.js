@@ -140,7 +140,7 @@ export async function buildReportData(pool, { highlightsWeeks = 1 } = {}) {
         project_name: p.project_name,
         detail: parts.join('；') + '。',
         rate: rateMap.has(code)
-          ? `（请购率：${fmtRate(rateMap.get(code).purchase_rate)}，到货率：${fmtRate(rateMap.get(code).arrival_rate)}）`
+          ? `（主设备请购率：${fmtRate(rateMap.get(code).purchase_rate)}，主设备到货率：${fmtRate(rateMap.get(code).arrival_rate)}）`
           : '',
       });
     }

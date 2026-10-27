@@ -305,8 +305,8 @@ describe('/api/report-templates 与 /api/report-preview', () => {
     expect(prev.status).toBe(200);
     // 模板默认周报 → 窗口仅最近 1 期（0821）
     // P001 无 weekly_progress 完成率 → —；P009 取最近一期（0821）的完成率
-    expect(prev.body.text).toContain('1、项目甲（请购率：—，到货率：—），详情。');
-    expect(prev.body.text).toContain('2、项目壬（请购率：85%，到货率：80%），完成B。');
+    expect(prev.body.text).toContain('1、项目甲（主设备请购率：—，主设备到货率：—），详情。');
+    expect(prev.body.text).toContain('2、项目壬（主设备请购率：85%，主设备到货率：80%），完成B。');
   });
 
   it('无模板时预览返回空文本；template_id 不存在返回 404', async () => {
