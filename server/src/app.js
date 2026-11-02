@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import importRouter from './routes/import.js';
 import importPmsRouter from './routes/importPms.js';
+import importTransferRouter from './routes/importTransfer.js';
 import reportsRouter from './routes/reports.js';
 import personsRouter from './routes/persons.js';
 import statsRouter from './routes/stats.js';
@@ -21,9 +22,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
   const app = express();
-  app.use(express.json());
+  // PMS 金额刷新清单较大，放宽请求体上限
+  app.use(express.json({ limit: '50mb' }));
   app.use('/api/import', importRouter);
   app.use('/api/import-pms', importPmsRouter);
+  app.use('/api/import-transfer', importTransferRouter);
   app.use('/api', reportsRouter);
   app.use('/api/persons', personsRouter);
   app.use('/api', statsRouter);

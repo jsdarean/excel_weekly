@@ -7,17 +7,17 @@ import { getPool } from '../src/db.js';
 import { resetDb } from './helpers/db.js';
 
 function buildPmsBuffer(rows) {
-  const header = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '第一次立项批复完成时间', '第一次立项批复金额'];
-  const ws = xlsx.utils.aoa_to_sheet([header, ...rows]);
+  const header = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '第一次立项批复完成时间', '第一次立项批复金额', '项目年份'];
+  const ws = xlsx.utils.aoa_to_sheet([header, ...rows.map((r) => [...r, '2026'])]);
   const wb = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(wb, ws, 'PMS');
   return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
-// 带「总体进度计划-割接上线计划完成时间」列的宽表
+// 带「总体进度计划-割接上线计划完成时间」与金额列的宽表
 function buildPmsBufferWithCutover(rows) {
-  const header = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '第一次立项批复完成时间', '第一次立项批复金额', '总体进度计划-割接上线计划完成时间'];
-  const ws = xlsx.utils.aoa_to_sheet([header, ...rows]);
+  const header = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '第一次立项批复完成时间', '第一次立项批复金额', '总体进度计划-割接上线计划完成时间', '累计资本开支金额', '累计转资金额', '项目年份'];
+  const ws = xlsx.utils.aoa_to_sheet([header, ...rows.map((r) => [...r, '2026'])]);
   const wb = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(wb, ws, 'PMS');
   return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -90,6 +90,95 @@ describe('POST /api/import-pms', () => {
     expect(res.body.insertedList).toEqual([
       { projectCode: 'P999', projectName: '新项目丙', manager: '张三' },
     ]);
+  });
+
+  it('累计资本开支金额：每次导入覆盖更新（宽表为准；转资金额改由转资工单导入维护）', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query("INSERT INTO persons (name) VALUES ('张三')");
+    const buf1 = buildPmsBufferWithCutover([
+      ['P001', '项目甲', '工程实施阶段', '张三', '2025/9/9', 320, null, 1005000, 600000],
+    ]);
+    const r1 = await request(app).post('/api/import-pms').attach('file', buf1, 'pms.xlsx');
+    expect(r1.status).toBe(200);
+    const [a] = await pool.query("SELECT capex_amount, transferred_amount FROM projects WHERE project_code='P001'");
+    expect(Number(a[0].capex_amount)).toBe(100.5);
+    expect(a[0].transferred_amount).toBeNull(); // 宽表的转资列不再入库
+
+    // 再次导入：金额变化即覆盖（与割接时间"只补空"不同）
+    const buf2 = buildPmsBufferWithCutover([
+      ['P001', '项目甲', '工程实施阶段', '张三', '2025/9/9', 320, null, 2007500, 888000],
+    ]);
+    const r2 = await request(app).post('/api/import-pms').attach('file', buf2, 'pms.xlsx');
+    expect(r2.status).toBe(200);
+    const [b] = await pool.query("SELECT capex_amount FROM projects WHERE project_code='P001'");
+    expect(Number(b[0].capex_amount)).toBe(200.75);
+  });
+
+  it('apply 的 moneyRows：阶段未变化的项目也刷新累计资本开支金额', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query("INSERT INTO persons (name) VALUES ('张三')");
+    await pool.query(
+      "INSERT INTO projects (project_code, project_name, stage, owner) VALUES ('P100', '项目百', '项目实施阶段', '张三')"
+    );
+    // apply 不带 stageChanges（用户全部选择"不变更"），只带 moneyRows
+    const res = await request(app).post('/api/import-pms/apply').send({
+      toInsert: [],
+      confirmedUpdates: [],
+      moneyRows: [{ projectCode: 'P100', capexAmount: 123.45 }],
+    });
+    expect(res.status).toBe(200);
+    const [r] = await pool.query("SELECT capex_amount FROM projects WHERE project_code='P100'");
+    expect(Number(r[0].capex_amount)).toBe(123.45);
+  });
+
+  it('新增项目：专业类别取自宽表「二级专业名称」', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query("INSERT INTO persons (name) VALUES ('张三')");
+    const buf = xlsx.write(
+      (() => {
+        const ws = xlsx.utils.aoa_to_sheet([
+          ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '项目年份', '二级专业名称'],
+          ['PN001', '新项目甲', '工程实施阶段', '张三', '2026', '核心网'],
+        ]);
+        const wb = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(wb, ws, 'PMS');
+        return wb;
+      })(),
+      { type: 'buffer', bookType: 'xlsx' }
+    );
+    const res = await request(app).post('/api/import-pms').attach('file', buf, 'pms.xlsx');
+    expect(res.status).toBe(200);
+    const [r] = await pool.query("SELECT category_major FROM projects WHERE project_code='PN001'");
+    expect(r[0].category_major).toBe('核心网');
+  });
+
+  it('新增年份门槛：项目年份早于 2026 不新增；存量项目不受年份限制', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query("INSERT INTO persons (name) VALUES ('张三')");
+    await pool.query("INSERT INTO projects (project_code, project_name, stage, owner) VALUES ('POLD', '存量老项目', '项目实施阶段', '张三')");
+    const buf = xlsx.write(
+      (() => {
+        const ws = xlsx.utils.aoa_to_sheet([
+          ['项目编码', '项目名称', '项目阶段', '工程管理经理-主', '项目年份'],
+          ['P2025', '老项目新行', '工程实施阶段', '张三', '2025'], // 2025 → 不新增
+          ['P2026', '新项目', '工程实施阶段', '张三', '2026'],   // 2026 → 新增
+          ['POLD', '存量老项目', '工程验收阶段', '张三', '2023'], // 存量 → 阶段变化仍列出
+        ]);
+        const wb = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(wb, ws, 'PMS');
+        return wb;
+      })(),
+      { type: 'buffer', bookType: 'xlsx' }
+    );
+    const res = await request(app).post('/api/import-pms/preview').attach('file', buf, 'pms.xlsx');
+    expect(res.status).toBe(200);
+    expect(res.body.skippedOldYear).toBe(1);
+    expect(res.body.toInsert.map((p) => p.projectCode)).toEqual(['P2026']);
+    expect(res.body.stageChanges.map((c) => c.projectCode)).toEqual(['POLD']);
   });
 
   it('割接上线计划完成时间：新增写入，空值补充，已有值不覆盖', async () => {

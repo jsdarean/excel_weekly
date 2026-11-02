@@ -176,6 +176,20 @@ describe('POST /api/import', () => {
     });
   });
 
+  it('工程责任人：新增写入；重复导入不改动存量项目的责任人', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query("INSERT INTO projects (project_code, project_name, owner) VALUES ('P001', '项目甲', '旧责任人')");
+    // 周报文件里责任人写的是 张三 → 存量项目不覆盖
+    const res = await request(app)
+      .post('/api/import')
+      .field('report_date', '2026-08-21')
+      .attach('file', buildBuffer(), 'weekly.xlsx');
+    expect(res.status).toBe(200);
+    const [r] = await pool.query("SELECT owner FROM projects WHERE project_code = 'P001'");
+    expect(r[0].owner).toBe('旧责任人');
+  });
+
   it('计划割接上线时间：文件有值则覆盖数据库，文件无此列则不动数据库', async () => {
     const app = createApp();
     const pool = getPool();

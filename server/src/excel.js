@@ -38,6 +38,9 @@ function resolveColumns(header) {
     demandDept: find('需求部门'),
     demandRoom: find('需求室'),
     demandOwner: find('需求责任人'),
+    estTransfer: find('预计今年底前新增转资金额'),
+    cutoverCount: find('本周割接次数'),
+    cutoverContent: find('割接内容'),
   };
 }
 
@@ -139,6 +142,10 @@ export function parseWeeklyReport(buffer) {
     progress.push({
       projectCode: code,
       progress: toText(cell(row, col.progress)),
+      // 周报扩展列（可选）：转资预测/割接情况，随本周周报入库，按 report_date 记周次
+      estTransferAmount: toNumber(cell(row, col.estTransfer)),
+      cutoverCount: toNumber(cell(row, col.cutoverCount)),
+      cutoverContent: toText(cell(row, col.cutoverContent)),
       purchaseRate: toNumber(cell(row, col.purchaseRate)),
       disclosure: toText(cell(row, col.disclosure)),
       arrivalRate: toNumber(cell(row, col.arrivalRate)),

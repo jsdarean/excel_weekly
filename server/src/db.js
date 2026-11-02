@@ -41,6 +41,8 @@ export async function initDatabase() {
     demand_room VARCHAR(128),
     demand_owner VARCHAR(64),
     plan_cutover_date DATE NULL,
+    capex_amount DECIMAL(14,2) NULL,
+    transferred_amount DECIMAL(14,2) NULL,
     stage_changed_at DATETIME NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -71,6 +73,27 @@ export async function initDatabase() {
   if (cutoverCol.length === 0) {
     await p.query('ALTER TABLE projects ADD COLUMN plan_cutover_date DATE NULL');
   }
+  // 兼容旧表：累计资本开支金额/累计转资金额（分别由 PMS 宽表/转资工单导入，每次覆盖更新）
+  for (const [col, ddl] of [
+    ['capex_amount', 'ALTER TABLE projects ADD COLUMN capex_amount DECIMAL(14,2) NULL'],
+    ['transferred_amount', 'ALTER TABLE projects ADD COLUMN transferred_amount DECIMAL(14,2) NULL'],
+  ]) {
+    const [exists] = await p.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = ?`,
+      [col]
+    );
+    if (exists.length === 0) await p.query(ddl);
+  }
+  // 旧「订单金额」字段废弃：迁移其数据到累计资本开支金额后删除
+  const [oldOrder] = await p.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'projects' AND column_name = 'order_amount'`
+  );
+  if (oldOrder.length > 0) {
+    await p.query('UPDATE projects SET capex_amount = order_amount WHERE capex_amount IS NULL AND order_amount IS NOT NULL');
+    await p.query('ALTER TABLE projects DROP COLUMN order_amount');
+  }
   // 兼容旧表：阶段变更时间（阶段发生变化时由导入流程写入，用于"近N周交付项目数"统计）
   const [stageChangedCol] = await p.query(
     `SELECT 1 FROM information_schema.columns
@@ -84,6 +107,9 @@ export async function initDatabase() {
     project_code VARCHAR(64) NOT NULL,
     report_date DATE NOT NULL,
     progress TEXT,
+    est_transfer_amount DECIMAL(14,2) NULL,
+    cutover_count INT NULL,
+    cutover_content TEXT NULL,
     purchase_rate DECIMAL(5,2) NULL,
     disclosure VARCHAR(8),
     arrival_rate DECIMAL(5,2) NULL,
@@ -223,6 +249,19 @@ export async function initDatabase() {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_project (project_code)
   )`);
+  // 兼容旧表：周报扩展列（转资/割接，随云文档周报导入写入，按 report_date 区分周次）
+  for (const [col, ddl] of [
+    ['est_transfer_amount', 'ALTER TABLE weekly_progress ADD COLUMN est_transfer_amount DECIMAL(14,2) NULL'],
+    ['cutover_count', 'ALTER TABLE weekly_progress ADD COLUMN cutover_count INT NULL'],
+    ['cutover_content', 'ALTER TABLE weekly_progress ADD COLUMN cutover_content TEXT NULL'],
+  ]) {
+    const [exists] = await p.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'weekly_progress' AND column_name = ?`,
+      [col]
+    );
+    if (exists.length === 0) await p.query(ddl);
+  }
   // 兼容旧表：原 subscribed（订阅）列拆分为主送/抄送/密送
   const [subCol] = await p.query(
     `SELECT 1 FROM information_schema.columns

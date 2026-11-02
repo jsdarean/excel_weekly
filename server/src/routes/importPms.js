@@ -22,7 +22,7 @@ const STAGE_MAP = {
 };
 
 const REQUIRED_COLS = ['项目编码', '项目名称', '项目阶段', '工程管理经理-主'];
-const OPTIONAL_COLS = ['第一次立项批复完成时间', '第一次立项批复金额', '总体进度计划-割接上线计划完成时间'];
+const OPTIONAL_COLS = ['第一次立项批复完成时间', '第一次立项批复金额', '总体进度计划-割接上线计划完成时间', '累计资本开支金额', '项目年份', '二级专业名称'];
 
 function extractXlsxFromZip(buf) {
   const zip = new AdmZip(buf);
@@ -108,6 +108,9 @@ function parsePmsRows(rows, personNames) {
       approvalDate: idx['第一次立项批复完成时间'] >= 0 ? parsePmsDate(row[idx['第一次立项批复完成时间']]) : null,
       budgetWan: idx['第一次立项批复金额'] >= 0 ? parsePmsMoney(row[idx['第一次立项批复金额']]) : null,
       planCutoverDate: idx['总体进度计划-割接上线计划完成时间'] >= 0 ? parsePmsDate(row[idx['总体进度计划-割接上线计划完成时间']]) : null,
+      capexAmount: idx['累计资本开支金额'] >= 0 ? parsePmsMoney(row[idx['累计资本开支金额']]) : null,
+      projectYear: idx['项目年份'] >= 0 ? String(row[idx['项目年份']] ?? '').trim() : '',
+      categoryMajor: idx['二级专业名称'] >= 0 ? String(row[idx['二级专业名称']] ?? '').trim() : '',
     });
   }
   return parsed;
@@ -121,6 +124,7 @@ async function buildPreview(pool, rows) {
   const toInsert = [];
   const stageChanges = [];
   let unchanged = 0;
+  let skippedOldYear = 0; // 新增过滤：项目年份早于 2026
   let skippedNoPerson = 0;
   let skippedStage = 0;
 
@@ -146,6 +150,12 @@ async function buildPreview(pool, rows) {
       [p.projectCode]
     );
     if (!existing.length) {
+      // 新增门槛：项目年份必须 2026 及以后（缺少年份视为不满足，不新增；存量项目不受此限制）
+      const year = parseInt(p.projectYear, 10);
+      if (!Number.isInteger(year) || year < 2026) {
+        skippedOldYear++;
+        continue;
+      }
       toInsert.push(p);
       continue;
     }
@@ -164,17 +174,41 @@ async function buildPreview(pool, rows) {
     }
   }
 
-  return { toInsert, stageChanges, unchanged, skippedNoPerson, skippedStage };
+  // 累计资本开支金额刷新清单：取自宽表全部数据行（不按负责人/阶段过滤，
+  // apply 按 project_code 匹配库内项目，未知编码的更新影响 0 行、无副作用）
+  const moneyRows = [];
+  const seen = new Set();
+  const idx2 = parseHeader(rows);
+  for (const row of rows.slice(1)) {
+    const code = row[idx2['项目编码']] == null ? '' : String(row[idx2['项目编码']]).trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    moneyRows.push({
+      projectCode: code,
+      capexAmount: idx2['累计资本开支金额'] >= 0 ? parsePmsMoney(row[idx2['累计资本开支金额']]) : null,
+    });
+  }
+  return { toInsert, stageChanges, unchanged, skippedNoPerson, skippedStage, skippedOldYear, moneyRows };
 }
 
-async function applyChanges(pool, toInsert, confirmedUpdates) {
+async function applyChanges(pool, toInsert, confirmedUpdates, moneyRows = []) {
   const updatedList = [];
   const insertedList = [];
+  let moneyUpdated = 0;
+  // 累计资本开支金额：以宽表为准全量覆盖（与阶段/批复字段的"只补空"不同；转资金额由转资工单导入维护）
+  for (const m of moneyRows) {
+    const sets = [];
+    const params = [];
+    if (m.capexAmount != null) { sets.push('capex_amount = ?'); params.push(m.capexAmount); }
+    if (!sets.length) continue;
+    const [r] = await pool.query(`UPDATE projects SET ${sets.join(', ')} WHERE project_code = ?`, [...params, m.projectCode]);
+    if (r.affectedRows > 0) moneyUpdated++;
+  }
 
   for (const p of toInsert) {
     await pool.query(
-      'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan, plan_cutover_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan, p.planCutoverDate]
+      'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan, plan_cutover_date, capex_amount, category_major) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan, p.planCutoverDate, p.capexAmount, p.categoryMajor || null]
     );
     insertedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager });
   }
@@ -206,6 +240,11 @@ async function applyChanges(pool, toInsert, confirmedUpdates) {
       updates.push('plan_cutover_date = ?');
       params.push(p.planCutoverDate);
     }
+    // 累计资本开支金额：每次导入都覆盖更新（宽表为准）
+    if (p.capexAmount != null) {
+      updates.push('capex_amount = ?');
+      params.push(p.capexAmount);
+    }
     if (updates.length) {
       await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, p.projectCode]);
       if (existing[0].stage !== p.stage) {
@@ -214,7 +253,7 @@ async function applyChanges(pool, toInsert, confirmedUpdates) {
     }
   }
 
-  return { updatedList, insertedList };
+  return { updatedList, insertedList, moneyUpdated };
 }
 
 router.post('/preview', upload.single('file'), async (req, res) => {
@@ -241,10 +280,10 @@ router.post('/preview', upload.single('file'), async (req, res) => {
 
 router.post('/apply', async (req, res) => {
   try {
-    const { toInsert = [], confirmedUpdates = [] } = req.body || {};
+    const { toInsert = [], confirmedUpdates = [], moneyRows = [] } = req.body || {};
     const pool = getPool();
-    const { updatedList, insertedList } = await applyChanges(pool, toInsert, confirmedUpdates);
-    res.json({ updated: updatedList.length, inserted: insertedList.length, updatedList, insertedList });
+    const { updatedList, insertedList, moneyUpdated } = await applyChanges(pool, toInsert, confirmedUpdates, moneyRows);
+    res.json({ updated: updatedList.length, inserted: insertedList.length, moneyUpdated, updatedList, insertedList });
   } catch (e) {
     res.status(500).json({ error: `导入失败：${e.message}` });
   }
@@ -318,6 +357,11 @@ router.post('/', upload.single('file'), async (req, res) => {
           updates.push('plan_cutover_date = ?');
           params.push(p.planCutoverDate);
         }
+        // 累计资本开支金额：每次导入都覆盖更新（宽表为准）
+        if (p.capexAmount != null) {
+          updates.push('capex_amount = ?');
+          params.push(p.capexAmount);
+        }
         if (updates.length) {
           await pool.query(`UPDATE projects SET ${updates.join(', ')} WHERE project_code = ?`, [...params, p.projectCode]);
           if (existing[0].stage !== p.stage) {
@@ -329,8 +373,8 @@ router.post('/', upload.single('file'), async (req, res) => {
         }
       } else {
         await pool.query(
-          'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan, plan_cutover_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan, p.planCutoverDate]
+          'INSERT INTO projects (project_code, project_name, stage, owner, approval_date, budget_wan, plan_cutover_date, capex_amount, category_major) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [p.projectCode, p.projectName, p.stage, p.manager, p.approvalDate, p.budgetWan, p.planCutoverDate, p.capexAmount, p.categoryMajor || null]
         );
         stats.inserted++;
         stats.insertedList.push({ projectCode: p.projectCode, projectName: p.projectName, manager: p.manager });

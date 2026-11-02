@@ -28,7 +28,7 @@ router.get('/projects/:code', async (req, res) => {
 
 router.put('/projects/:code', async (req, res) => {
   try {
-    const { category, stage, demand_dept, demand_room, demand_owner, content, plan_cutover_date } = req.body || {};
+    const { category, stage, owner, demand_dept, demand_room, demand_owner, content, plan_cutover_date } = req.body || {};
     if (category !== undefined && !VALID_CATEGORIES.includes(category)) {
       return res.status(400).json({ error: `分类必须是：${VALID_CATEGORIES.join('、')}` });
     }
@@ -36,11 +36,25 @@ router.put('/projects/:code', async (req, res) => {
       return res.status(400).json({ error: `项目阶段必须是：${VALID_STAGES.join('、')}` });
     }
     const pool = getPool();
-    // 只允许修改分类、项目阶段、需求部门/室/责任人、建设内容、计划割接上线时间，其他字段一律忽略
+    // 只允许修改分类、项目阶段、工程责任人、需求部门/室/责任人、建设内容、计划割接上线时间，其他字段一律忽略
     const sets = [];
     const params = [];
     if (category !== undefined) { sets.push('category = ?'); params.push(category); }
-    if (stage !== undefined) { sets.push('stage = ?'); params.push(stage); }
+    if (stage !== undefined) {
+      // 阶段变化同步记录变更时间（支撑「近N周交付项目数」统计）；赋值顺序需在 stage 之前以读取旧值
+      sets.push('stage_changed_at = IF(? <=> stage, stage_changed_at, NOW())');
+      params.push(stage);
+      sets.push('stage = ?');
+      params.push(stage);
+    }
+    if (owner !== undefined) {
+      // 工程责任人须在「工程责任人」表中维护，保证 PMS 过滤、批量邮件等口径一致
+      if (owner) {
+        const [p] = await pool.query('SELECT 1 AS x FROM persons WHERE name = ?', [owner]);
+        if (!p.length) return res.status(400).json({ error: `工程责任人「${owner}」不在「工程责任人」名单中，请先在该页维护` });
+      }
+      sets.push('owner = ?'); params.push(owner || null);
+    }
     if (demand_dept !== undefined) { sets.push('demand_dept = ?'); params.push(demand_dept); }
     if (demand_room !== undefined) { sets.push('demand_room = ?'); params.push(demand_room); }
     if (demand_owner !== undefined) { sets.push('demand_owner = ?'); params.push(demand_owner); }

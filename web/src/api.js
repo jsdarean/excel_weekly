@@ -223,6 +223,11 @@ export const api = {
     fd.append('file', file);
     return request('/api/import-pms/preview', { method: 'POST', body: fd });
   },
+  importTransfer(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request('/api/import-transfer', { method: 'POST', body: fd });
+  },
   applyPms(body) {
     return request('/api/import-pms/apply', {
       method: 'POST',

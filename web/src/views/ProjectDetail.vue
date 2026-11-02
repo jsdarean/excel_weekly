@@ -16,7 +16,13 @@
             <label>计划割接上线时间</label>
             <input v-model="editCutover" type="date" />
           </div>
-          <div class="info-item"><label>工程责任人</label><span>{{ project.owner }}</span></div>
+          <div class="info-item">
+            <label>工程责任人</label>
+            <select v-model="editOwner">
+              <option value="">（无）</option>
+              <option v-for="p in persons" :key="p.id" :value="p.name">{{ p.name }}</option>
+            </select>
+          </div>
           <div class="info-item"><label>立项金额（万元）</label><span class="num">{{ project.budget_wan }}</span></div>
           <div class="info-item">
             <label>分类</label>
@@ -93,6 +99,8 @@ const editCategory = ref('');
 const editStage = ref('');
 const editDemandDept = ref('');
 const editDemandRoom = ref('');
+const editOwner = ref('');
+const persons = ref([]);
 const editDemandOwner = ref('');
 const editContent = ref('');
 const editCutover = ref('');
@@ -111,6 +119,7 @@ const dirty = computed(() => {
     editStage.value !== norm(project.value.stage) ||
     editDemandDept.value !== norm(project.value.demand_dept) ||
     editDemandRoom.value !== norm(project.value.demand_room) ||
+    editOwner.value !== norm(project.value.owner) ||
     editDemandOwner.value !== norm(project.value.demand_owner) ||
     editContent.value !== norm(project.value.content) ||
     editCutover.value !== norm(project.value.plan_cutover_date)
@@ -133,6 +142,7 @@ async function save() {
       stage: editStage.value,
       demand_dept: editDemandDept.value,
       demand_room: editDemandRoom.value,
+      owner: editOwner.value,
       demand_owner: editDemandOwner.value,
       content: editContent.value,
       plan_cutover_date: editCutover.value,
@@ -142,6 +152,7 @@ async function save() {
     project.value.stage = editStage.value;
     project.value.demand_dept = editDemandDept.value || null;
     project.value.demand_room = editDemandRoom.value || null;
+    project.value.owner = editOwner.value || null;
     project.value.demand_owner = editDemandOwner.value || null;
     project.value.content = editContent.value || null;
     project.value.plan_cutover_date = editCutover.value || null;
@@ -156,6 +167,8 @@ async function save() {
 
 onMounted(async () => {
   try {
+    // 工程责任人下拉选项
+    api.listPersons().then((r) => (persons.value = r.persons)).catch(() => {});
     const res = await api.getProject(code);
     project.value = res.project;
     progress.value = res.progress;
@@ -163,6 +176,7 @@ onMounted(async () => {
     editStage.value = norm(res.project.stage);
     editDemandDept.value = norm(res.project.demand_dept);
     editDemandRoom.value = norm(res.project.demand_room);
+    editOwner.value = norm(res.project.owner);
     editDemandOwner.value = norm(res.project.demand_owner);
     editContent.value = norm(res.project.content);
     editCutover.value = norm(res.project.plan_cutover_date);

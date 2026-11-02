@@ -39,6 +39,8 @@ export function buildExportData(rows, reportDate) {
     `周进展(${reportDate})`, `周进展(${nextFriday(reportDate)})`,
     '主设备请购完成率', '是否交底', '主设备到货完成率', '是否上线交维',
     '是否竣工验收', '需求部门', '需求室', '需求责任人',
+    '累计资本开支金额（万元）', '累计转资金额（万元）',
+    '是否全部完成转资', '预计今年底前新增转资金额（万元）', '本周割接次数', '割接内容',
   ];
   const body = rows.map((r, i) => [
     i + 1,
@@ -62,6 +64,18 @@ export function buildExportData(rows, reportDate) {
     toStr(r.demand_dept),
     toStr(r.demand_room),
     toStr(r.demand_owner),
+    toNum(r.capex_amount),
+    toNum(r.transferred_amount),
+    // 是否全部完成转资：相等 → 是；小于 → 否；任一空值或转资金额大于资本开支 → 空白
+    r.capex_amount != null && r.transferred_amount != null
+      ? (Number(r.transferred_amount) === Number(r.capex_amount)
+          ? '是'
+          : Number(r.transferred_amount) < Number(r.capex_amount) ? '否' : '')
+      : '',
+    toNum(r.est_transfer_amount),
+    // 本周割接次数、割接内容：导出恒为空（数据入库供分析用，不进导出文件）
+    '',
+    '',
   ]);
   return [header, ...body];
 }
@@ -74,6 +88,7 @@ export function buildAttachmentData(rows, reportDate) {
     `最近一周进展(${systemDate()})`,
     '主设备请购完成率', '是否交底', '主设备到货完成率', '是否上线交维',
     '是否竣工验收', '需求部门', '需求室', '需求责任人',
+    '累计资本开支金额（万元）', '累计转资金额（万元）',
   ];
   const body = rows.map((r, i) => [
     i + 1,
@@ -113,7 +128,8 @@ const HIGHLIGHT_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF
 
 // 列宽（A-V，参考文件实测；F 为计划割接上线时间）
 const COL_WIDTHS = [3.86, 9.6, 15.73, 30.07, 12.2, 12.2, 10.46, 8.2, 9.33, 16.2,
-  19.13, 22.33, 22.33, 12.86, 8.73, 12.86, 8.73, 12.86, 12.86, 12.86, 10.46];
+  19.13, 22.33, 22.33, 12.86, 8.73, 12.86, 8.73, 12.86, 12.86, 12.86, 10.46, 12.86, 14.86,
+  12.86, 16.2, 10.46, 30.07];
 
 // 每列数据区对齐（参考文件实测）
 const COL_ALIGN = [
@@ -138,6 +154,12 @@ const COL_ALIGN = [
   { horizontal: 'left', vertical: 'middle', wrapText: true },            // S 需求部门
   { horizontal: 'left', vertical: 'middle', wrapText: true },            // T 需求室
   { horizontal: 'left', vertical: 'middle', wrapText: true },            // U 需求责任人
+  { horizontal: 'center', vertical: 'middle' },                          // V 资本开支金额
+  { horizontal: 'center', vertical: 'middle' },                          // W 累计转资金额
+  { horizontal: 'center', vertical: 'middle' },                          // X 是否全部完成转资
+  { horizontal: 'center', vertical: 'middle' },                          // Y 预计今年底前新增转资金额
+  { horizontal: 'center', vertical: 'middle' },                          // Z 本周割接次数
+  { horizontal: 'left', vertical: 'middle', wrapText: true },            // AA 割接内容
 ];
 
 // 表头居中，但 D/E 列参考文件为左对齐

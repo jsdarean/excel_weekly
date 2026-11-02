@@ -34,11 +34,11 @@ export async function importData(pool, parsed, reportDate) {
             demand_dept, demand_room, demand_owner, plan_cutover_date)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
+           -- 工程责任人(owner)不在更新列：只允许新增时写入，存量项目不被周报导入改动
            category_major = VALUES(category_major),
            project_name = VALUES(project_name),
            approval_date = VALUES(approval_date),
            category = VALUES(category),
-           owner = VALUES(owner),
            budget_wan = VALUES(budget_wan),
            stage_changed_at = IF(VALUES(stage) IS NOT NULL AND NOT (VALUES(stage) <=> stage), NOW(), stage_changed_at),
            stage = IF(VALUES(stage) IS NOT NULL AND NOT (VALUES(stage) <=> stage), VALUES(stage), stage),
@@ -59,17 +59,22 @@ export async function importData(pool, parsed, reportDate) {
       await conn.query(
         `INSERT INTO weekly_progress
            (project_code, report_date, progress, purchase_rate, disclosure,
-            arrival_rate, online_handover, final_acceptance)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            arrival_rate, online_handover, final_acceptance,
+            est_transfer_amount, cutover_count, cutover_content)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            progress = VALUES(progress),
            purchase_rate = VALUES(purchase_rate),
            disclosure = VALUES(disclosure),
            arrival_rate = VALUES(arrival_rate),
            online_handover = VALUES(online_handover),
-           final_acceptance = VALUES(final_acceptance)`,
+           final_acceptance = VALUES(final_acceptance),
+           est_transfer_amount = VALUES(est_transfer_amount),
+           cutover_count = VALUES(cutover_count),
+           cutover_content = VALUES(cutover_content)`,
         [w.projectCode, reportDate, normalizeProgress(w.progress), w.purchaseRate, w.disclosure,
-         w.arrivalRate, w.onlineHandover, w.finalAcceptance]
+         w.arrivalRate, w.onlineHandover, w.finalAcceptance,
+         w.estTransferAmount, w.cutoverCount, w.cutoverContent]
       );
       progressWritten++;
     }

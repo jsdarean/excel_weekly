@@ -24,6 +24,8 @@ describe('buildExportData', () => {
       budget_wan: '320.00', stage: '项目实施阶段', content: '内容甲',
       progress: '本周进展甲', purchase_rate: '0.85', disclosure: '是',
       arrival_rate: '0.80', online_handover: '否', final_acceptance: '否',
+      capex_amount: '150.50', transferred_amount: '80.25',
+      est_transfer_amount: '500.5', cutover_count: '2', cutover_content: '完成核心网割接',
     },
     {
       project_code: 'P002', category_major: '业务网', project_name: '项目乙',
@@ -41,7 +43,13 @@ describe('buildExportData', () => {
     expect(header[5]).toBe('计划割接上线时间');
     expect(header[11]).toBe('周进展(2026-08-21)');
     expect(header[12]).toBe('周进展(2026-08-28)');
-    expect(header).toHaveLength(21);
+    expect(header).toHaveLength(27);
+    expect(header[21]).toBe('累计资本开支金额（万元）');
+    expect(header[22]).toBe('累计转资金额（万元）');
+    expect(header[23]).toBe('是否全部完成转资');
+    expect(header[24]).toBe('预计今年底前新增转资金额（万元）');
+    expect(header[25]).toBe('本周割接次数');
+    expect(header[26]).toBe('割接内容');
   });
 
   it('序号从 1 递增，下周进展列为空，金额/完成率转数字', () => {
@@ -62,6 +70,19 @@ describe('buildExportData', () => {
     // 空值导出为空字符串
     expect(data[2][4]).toBe('');
     expect(data[2][8]).toBe('');
+    // 末尾两列：金额转数字
+    expect(data[1][21]).toBe(150.5);
+    expect(data[1][22]).toBe(80.25);
+    expect(data[1][23]).toBe('否'); // 80.25 < 150.5
+    // 相等 → 是；大于 → 空白
+    expect(buildExportData([{ ...rows[0], transferred_amount: '150.50' }], '2026-08-21')[1][23]).toBe('是');
+    expect(buildExportData([{ ...rows[0], transferred_amount: '200.00' }], '2026-08-21')[1][23]).toBe('');
+    expect(data[1][24]).toBe(500.5);
+    // 本周割接次数/割接内容：导出恒为空（数据仅入库分析）
+    expect(data[1][25]).toBe('');
+    expect(data[1][26]).toBe('');
+    expect(data[2][21]).toBe('');
+    expect(data[2][23]).toBe(''); // 空值不判断
   });
 
   it('表头与数据区样式复刻参考文件，完成率列为百分比格式', () => {

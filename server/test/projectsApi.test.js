@@ -19,6 +19,42 @@ async function seed() {
   );
 }
 
+describe('PUT /api/projects/:code 工程责任人', () => {
+  beforeEach(resetDb);
+
+  it('修改责任人 → 校验必须在人员名单中；阶段变化记录 stage_changed_at', async () => {
+    const app = createApp();
+    const pool = getPool();
+    await pool.query(
+      "INSERT INTO projects (project_code, project_name, stage) VALUES ('P001', '甲', '项目实施阶段')"
+    );
+    await pool.query("INSERT INTO persons (name) VALUES ('刘栋')");
+
+    // 不在名单 → 400
+    const bad = await request(app).put('/api/projects/P001').send({ owner: '不存在的人' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toContain('工程责任人');
+
+    // 正常修改
+    const ok = await request(app).put('/api/projects/P001').send({ owner: '刘栋' });
+    expect(ok.status).toBe(200);
+    const [r] = await pool.query("SELECT owner FROM projects WHERE project_code='P001'");
+    expect(r[0].owner).toBe('刘栋');
+
+    // 阶段变化 → 记录 stage_changed_at
+    expect((await request(app).put('/api/projects/P001').send({ stage: '终验归档阶段' })).status).toBe(200);
+    const [r2] = await pool.query("SELECT stage, stage_changed_at FROM projects WHERE project_code='P001'");
+    expect(r2[0].stage).toBe('终验归档阶段');
+    expect(r2[0].stage_changed_at).toBeTruthy();
+
+    // 阶段不变 → 时间戳不动
+    const t = r2[0].stage_changed_at;
+    await request(app).put('/api/projects/P001').send({ stage: '终验归档阶段' });
+    const [r3] = await pool.query("SELECT stage_changed_at FROM projects WHERE project_code='P001'");
+    expect(r3[0].stage_changed_at).toBe(t);
+  });
+});
+
 describe('GET /api/projects/:code', () => {
   beforeEach(async () => {
     await resetDb();
@@ -91,10 +127,10 @@ describe('PUT /api/projects/:code', () => {
     expect(rows[0].category).toBe('基础能力');
   });
 
-  it('忽略其他字段；项目不存在返回 404', async () => {
+  it('忽略白名单外字段（如 budget_wan）；项目不存在返回 404', async () => {
     const res = await request(createApp())
       .put('/api/projects/P001')
-      .send({ category: '拟取消', project_name: '篡改名称', owner: '篡改人' });
+      .send({ category: '拟取消', project_name: '篡改名称', budget_wan: 999 });
     expect(res.status).toBe(200);
     const [rows] = await getPool().query(
       "SELECT project_name, owner, category FROM projects WHERE project_code = 'P001'"

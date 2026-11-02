@@ -36,7 +36,7 @@ router.get('/reports', async (req, res) => {
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const [rows] = await pool.query(
       `SELECT p.id, p.project_code, p.category_major, p.project_name,
-              p.approval_date, p.plan_cutover_date, p.category, p.owner, p.budget_wan, p.stage,
+              p.approval_date, p.plan_cutover_date, p.capex_amount, p.transferred_amount, p.category, p.owner, p.budget_wan, p.stage,
               p.content, p.demand_dept, p.demand_room, p.demand_owner,
               p.pin_order,
               EXISTS(
@@ -49,7 +49,8 @@ router.get('/reports', async (req, res) => {
                 SELECT 1 FROM watched_projects wp WHERE wp.project_code = p.project_code
               ) AS watched,
               w.report_date, w.progress, w.purchase_rate, w.disclosure,
-              w.arrival_rate, w.online_handover, w.final_acceptance
+              w.arrival_rate, w.online_handover, w.final_acceptance,
+              w.est_transfer_amount, w.cutover_count, w.cutover_content
        FROM projects p
        LEFT JOIN weekly_progress w
          ON w.project_code = p.project_code AND w.report_date = ?

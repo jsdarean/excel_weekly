@@ -54,8 +54,29 @@ describe('parseWeeklyReport', () => {
         projectCode: 'P001', progress: '本周进展甲', purchaseRate: 0.85,
         disclosure: '是', arrivalRate: 0.8, onlineHandover: '否',
         finalAcceptance: '否',
+        estTransferAmount: null, cutoverCount: null, cutoverContent: null,
       },
     ]);
+  });
+
+  it('扩展列（转资预测/割接）按表头名解析，缺失时为 null', () => {
+    const header = [
+      '序号', '专业类别', '项目编码', '项目名称', '立项批复日期', '分类', '工程责任人', '立项金额（万元）',
+      '项目阶段', '建设内容', '周进展(20260814)', '周进展（20260821）', '主设备请购完成率', '是否交底',
+      '主设备到货完成率', '是否上线交维', '是否竣工验收', '预计今年底前新增转资金额', '本周割接次数', '割接内容',
+    ];
+    const row = [1, '业务网', 'P001', '项目甲', '2025-09-09', '基础能力', '张三', 320, '项目实施阶段', '内容',
+      '上周', '本周进展', 0.85, '是', 0.8, '否', '否', 500.5, 2, '完成核心网割接'];
+    const r = parseWeeklyReport(buildBufferWithHeader(header, [row]));
+    expect(r.progress[0].estTransferAmount).toBe(500.5);
+    expect(r.progress[0].cutoverCount).toBe(2);
+    expect(r.progress[0].cutoverContent).toBe('完成核心网割接');
+
+    // 无这些列的旧文件 → null
+    const oldFmt = parseWeeklyReport(buildBuffer([row.slice(0, 17)]));
+    expect(oldFmt.progress[0].estTransferAmount).toBeNull();
+    expect(oldFmt.progress[0].cutoverCount).toBeNull();
+    expect(oldFmt.progress[0].cutoverContent).toBeNull();
   });
 
   it('项目编码为空但有内容的行计入 skipped，完全空白行不计', () => {
