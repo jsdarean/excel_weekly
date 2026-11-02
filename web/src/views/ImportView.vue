@@ -53,6 +53,7 @@
           <li><span class="num stat-num">{{ pmsPreview.unchanged }}</span> 无变化</li>
           <li><span class="num stat-num">{{ pmsPreview.skippedNoPerson }}</span> 跳过（非配置人员）</li>
           <li><span class="num stat-num">{{ pmsPreview.skippedStage }}</span> 跳过（非标准阶段）</li>
+          <li><span class="num stat-num">{{ pmsPreview.skippedOldYear ?? 0 }}</span> 跳过（2026年前不新增）</li>
         </ul>
 
         <template v-if="pmsPreview.toInsert.length">
@@ -104,12 +105,13 @@
         </template>
       </div>
 
-      <!-- 导入完成结果 -->
+    <!-- 导入完成结果 -->
       <div v-if="pmsResult" class="result">
         <p class="result-date">PMS 宽表导入完成</p>
         <ul class="stats">
           <li><span class="num stat-num">{{ pmsResult.updated }}</span> 更新阶段</li>
           <li><span class="num stat-num">{{ pmsResult.inserted }}</span> 新增项目</li>
+          <li><span class="num stat-num">{{ pmsResult.moneyUpdated ?? 0 }}</span> 更新金额</li>
         </ul>
         <template v-if="pmsResult.updatedList.length">
           <p class="detail-title">已更新阶段明细：</p>
@@ -130,6 +132,50 @@
         <div class="apply-row">
           <button @click="resetPms">重新导入</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 三、转资工单导入 -->
+    <div class="card form-card">
+      <h3>转资工单导入</h3>
+      <p class="pms-hint">
+        从转资工单表按项目编码汇总「转资合计金额」（只统计 审批状态=审批通过 且 导入状态=成功 的行，多行求和，单位元自动转万元），
+        全量覆盖写入项目的累计转资金额；本表是该字段的权威来源。<br />
+        转资工单清单文件下载路径：PMS：项目管理 / 工程转资 / 转资报表 / 转资工单查询
+      </p>
+      <div class="form">
+        <label>Excel 文件
+          <input type="file" accept=".xlsx,.xls" @change="onTransferFile" />
+        </label>
+        <button class="primary" :disabled="!transferFile || transferLoading" @click="submitTransfer">
+          {{ transferLoading ? '导入中…' : '导入' }}
+        </button>
+      </div>
+      <!-- 导入进度：上传显示真实百分比，解析/写库显示处理中 -->
+      <div v-if="transferProgress !== null" class="transfer-progress">
+        <div class="tp-bar" :class="{ busy: transferPhase === 'process' }">
+          <div class="tp-fill" :style="{ width: transferProgress + '%' }"></div>
+        </div>
+        <p class="tp-text">
+          <template v-if="transferPhase === 'upload'">正在上传文件… {{ Math.min(99, Math.round(transferProgress / 0.9)) }}%</template>
+          <template v-else-if="transferPhase === 'process'">服务器解析中（大文件约需 1 分钟），写入数据库…</template>
+          <template v-else>导入完成</template>
+        </p>
+      </div>
+      <p v-if="transferError" class="error">{{ transferError }}</p>
+      <div v-if="transferResult" class="result">
+        <p class="result-date">转资工单导入完成</p>
+        <ul class="stats">
+          <li><span class="num stat-num">{{ transferResult.updated }}</span> 更新项目</li>
+          <li><span class="num stat-num">{{ transferResult.countedRows }}</span> 有效工单行</li>
+          <li><span class="num stat-num">{{ transferResult.unmatched }}</span> 库中无此项目</li>
+        </ul>
+        <template v-if="transferResult.unmatchedList?.length">
+          <p class="detail-title">库中未匹配的项目编码（前 20 个）：</p>
+          <ul class="detail-list">
+            <li v-for="c in transferResult.unmatchedList" :key="c" class="num">{{ c }}</li>
+          </ul>
+        </template>
       </div>
     </div>
   </div>
@@ -232,6 +278,71 @@ async function previewPms() {
   }
 }
 
+const transferFile = ref(null);
+const transferLoading = ref(false);
+const transferResult = ref(null);
+const transferError = ref('');
+const transferProgress = ref(null); // 0-100；null 表示未开始
+const transferPhase = ref('upload'); // upload / process / done
+
+function onTransferFile(e) {
+  transferFile.value = e.target.files[0] || null;
+  transferResult.value = null;
+  transferError.value = '';
+  transferProgress.value = null;
+}
+
+// XHR 上传：upload.onprogress 提供真实上传百分比；响应返回后进入解析/写库阶段
+function uploadWithProgress(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const fd = new FormData();
+    fd.append('file', file);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        // 上传阶段最多到 90%；字节传完立即切处理中阶段，避免显示"100% 像已完成"
+        const pct = Math.round((e.loaded / e.total) * 90);
+        transferProgress.value = pct;
+        if (pct >= 90) transferPhase.value = 'process';
+      }
+    };
+    xhr.upload.onload = () => {
+      transferPhase.value = 'process';
+      transferProgress.value = 90;
+    };
+    xhr.onload = () => {
+      try {
+        const body = JSON.parse(xhr.responseText || '{}');
+        if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+        else reject(new Error(body.error || `请求失败（${xhr.status}）`));
+      } catch {
+        reject(new Error('响应解析失败'));
+      }
+    };
+    xhr.onerror = () => reject(new Error('网络错误，请求失败'));
+    xhr.open('POST', '/api/import-transfer');
+    xhr.send(fd);
+  });
+}
+
+async function submitTransfer() {
+  transferLoading.value = true;
+  transferError.value = '';
+  transferResult.value = null;
+  transferProgress.value = 0;
+  transferPhase.value = 'upload';
+  try {
+    transferResult.value = await uploadWithProgress(transferFile.value);
+    transferPhase.value = 'done';
+    transferProgress.value = 100;
+  } catch (e) {
+    transferError.value = e.message;
+    transferProgress.value = null;
+  } finally {
+    transferLoading.value = false;
+  }
+}
+
 async function applyPms() {
   if (!pmsPreview.value) return;
   pmsApplyLoading.value = true;
@@ -243,6 +354,7 @@ async function applyPms() {
     pmsResult.value = await api.applyPms({
       toInsert: pmsPreview.value.toInsert,
       confirmedUpdates,
+      moneyRows: pmsPreview.value.moneyRows || [],
     });
     pmsPreview.value = null;
   } catch (e) {
@@ -270,6 +382,32 @@ function resetPms() {
   gap: 8px;
   font-size: 14px;
   color: var(--ink-secondary);
+}
+/* 转资导入进度条 */
+.transfer-progress { margin-top: 12px; max-width: 480px; }
+.tp-bar {
+  height: 10px;
+  background: var(--canvas-soft, #eef0f2);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.tp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0086d4, #33a3dc);
+  border-radius: 5px;
+  transition: width 0.2s ease;
+}
+.tp-text { margin: 6px 0 0; font-size: 13px; color: var(--ink-mute); }
+/* 解析/写库阶段：条纹滚动动画，表示仍在处理 */
+.tp-bar.busy .tp-fill {
+  background: repeating-linear-gradient(
+    45deg, #0086d4 0 12px, #33a3dc 12px 24px
+  );
+  animation: tp-slide 1s linear infinite;
+}
+@keyframes tp-slide {
+  from { background-position: 0 0; }
+  to { background-position: 34px 0; }
 }
 .pms-hint { font-size: 13px; color: var(--ink-mute); margin: 0 0 12px; }
 .result { margin-top: 16px; }
